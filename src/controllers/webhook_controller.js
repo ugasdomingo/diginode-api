@@ -5,6 +5,7 @@ import {
   handle_invoice_paid,
   handle_meeting_booked,
 } from '../services/crm_service.js';
+import Campaign from '../models/campaign_model.js';
 
 // POST /api/webhooks/make/inbound
 // Make.com forwards incoming DMs from WhatsApp, IG, LinkedIn
@@ -20,6 +21,32 @@ const handle_make_inbound = async (req, res, next) => {
 
     // Make.com reads the 'reply' field and sends it back to the user
     res.json({ success: true, reply: result.response });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/webhooks/make/content-ready
+// Make.com calls this when a content campaign proposal is ready
+const handle_content_ready = async (req, res, next) => {
+  try {
+    const { campaign_id, proposal_url } = req.body;
+
+    if (!campaign_id || !proposal_url) {
+      return res.status(400).json({ success: false, message: 'campaign_id and proposal_url are required' });
+    }
+
+    const campaign = await Campaign.findByIdAndUpdate(
+      campaign_id,
+      { status: 'proposal_ready', proposal_url },
+      { new: true }
+    );
+
+    if (!campaign) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+
+    res.json({ success: true, data: campaign });
   } catch (err) {
     next(err);
   }
@@ -75,4 +102,4 @@ const handle_cal = async (req, res, next) => {
   }
 };
 
-export { handle_make_inbound, handle_stripe, handle_cal };
+export { handle_make_inbound, handle_content_ready, handle_stripe, handle_cal };

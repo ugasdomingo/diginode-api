@@ -1,9 +1,8 @@
 import Lead from '../models/lead_model.js';
 import Client from '../models/client_model.js';
-import ContentGrid from '../models/content_grid_model.js';
 import SupportTicket from '../models/support_ticket_model.js';
-import { generate_content_grid } from '../services/content_manager_service.js';
-import { design_post } from '../services/disenador_service.js';
+import Campaign from '../models/campaign_model.js';
+import BlogPost from '../models/blog_post_model.js';
 import { analyze_meeting } from '../services/ingeniero_service.js';
 import { convert_lead_to_client } from '../services/crm_service.js';
 
@@ -14,7 +13,7 @@ const get_dashboard = async (_req, res, next) => {
       Lead.countDocuments(),
       Client.countDocuments({ status: 'active' }),
       SupportTicket.countDocuments({ status: { $in: ['open', 'pending_review'] } }),
-      ContentGrid.countDocuments({ status: 'draft' }),
+      Campaign.countDocuments({ status: 'pending' }),
     ]);
 
     res.json({
@@ -78,43 +77,97 @@ const convert_lead = async (req, res, next) => {
   }
 };
 
+// ─── Content Campaigns ────────────────────────────────────────────────────────
+
 // POST /api/admin/content/generate
+// Creates a campaign and fires the Make.com webhook asynchronously
 const generate_content = async (req, res, next) => {
   try {
-    const { theme } = req.body;
+    const { name, context } = req.body;
 
-    if (!theme) {
-      return res.status(400).json({ success: false, message: 'theme is required' });
+    if (!name || !context) {
+      return res.status(400).json({ success: false, message: 'name and context are required' });
     }
 
-    const posts = await generate_content_grid(theme);
-    res.status(201).json({ success: true, data: posts });
+    const campaign = await Campaign.create({ name, context });
+
+    // Fire-and-forget: trigger Make.com scenario without blocking the response
+    const webhook_url = process.env.MAKE_CONTENT_WEBHOOK_URL;
+    if (webhook_url) {
+      fetch(webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaign_id: campaign._id.toString(), name, context }),
+      }).catch((err) => console.error('[Make content webhook error]', err.message));
+    }
+
+    res.status(201).json({ success: true, data: campaign });
   } catch (err) {
     next(err);
   }
 };
 
-// POST /api/admin/content/:content_id/design
-const design_content = async (req, res, next) => {
+// GET /api/admin/content/campaigns
+const get_campaigns = async (req, res, next) => {
   try {
-    const { content_id } = req.params;
-    const post = await design_post(content_id);
-    res.json({ success: true, data: post });
+    const { page = 1, limit = 20 } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [campaigns, total] = await Promise.all([
+      Campaign.find().sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      Campaign.countDocuments(),
+    ]);
+
+    res.json({ success: true, data: campaigns, total, page: Number(page) });
   } catch (err) {
     next(err);
   }
 };
 
-// GET /api/admin/content
-const get_content = async (req, res, next) => {
+// PATCH /api/admin/content/campaigns/:campaign_id
+const update_campaign = async (req, res, next) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
-    const filter = status ? { status } : {};
+    const { campaign_id } = req.params;
+    const { status } = req.body;
+
+    const allowed = ['pending', 'proposal_ready', 'approved', 'in_production'];
+    if (status && !allowed.includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+
+    const campaign = await Campaign.findByIdAndUpdate(campaign_id, { status }, { new: true });
+
+    if (!campaign) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+
+    res.json({ success: true, data: campaign });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Blog Admin ───────────────────────────────────────────────────────────────
+
+const slugify = (title) =>
+  title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') +
+  '-' +
+  Date.now().toString(36);
+
+// GET /api/admin/blog
+const get_admin_posts = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
     const [posts, total] = await Promise.all([
-      ContentGrid.find(filter).sort({ scheduled_for: 1 }).skip(skip).limit(Number(limit)),
-      ContentGrid.countDocuments(filter),
+      BlogPost.find().sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      BlogPost.countDocuments(),
     ]);
 
     res.json({ success: true, data: posts, total, page: Number(page) });
@@ -123,25 +176,45 @@ const get_content = async (req, res, next) => {
   }
 };
 
-// PATCH /api/admin/content/:content_id
-const update_content = async (req, res, next) => {
+// POST /api/admin/blog
+const create_post = async (req, res, next) => {
   try {
-    const { content_id } = req.params;
-    const { status, copy } = req.body;
+    const { title, content, excerpt, thumbnail_url, status } = req.body;
 
-    const allowed_statuses = ['draft', 'approved', 'rejected'];
-    if (status && !allowed_statuses.includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status' });
+    if (!title) {
+      return res.status(400).json({ success: false, message: 'title is required' });
     }
 
-    const update = {};
-    if (status) update.status = status;
-    if (copy) update.copy = copy;
+    const slug = slugify(title);
+    const published_at = status === 'published' ? new Date() : null;
 
-    const post = await ContentGrid.findByIdAndUpdate(content_id, update, { new: true });
+    const post = await BlogPost.create({ title, slug, content, excerpt, thumbnail_url, status, published_at });
+    res.status(201).json({ success: true, data: post });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /api/admin/blog/:post_id
+const update_post = async (req, res, next) => {
+  try {
+    const { post_id } = req.params;
+    const { title, content, excerpt, thumbnail_url, status } = req.body;
+
+    const update = {};
+    if (title !== undefined) update.title = title;
+    if (content !== undefined) update.content = content;
+    if (excerpt !== undefined) update.excerpt = excerpt;
+    if (thumbnail_url !== undefined) update.thumbnail_url = thumbnail_url;
+    if (status !== undefined) {
+      update.status = status;
+      if (status === 'published') update.published_at = new Date();
+    }
+
+    const post = await BlogPost.findByIdAndUpdate(post_id, update, { new: true });
 
     if (!post) {
-      return res.status(404).json({ success: false, message: 'Content post not found' });
+      return res.status(404).json({ success: false, message: 'Post not found' });
     }
 
     res.json({ success: true, data: post });
@@ -149,6 +222,24 @@ const update_content = async (req, res, next) => {
     next(err);
   }
 };
+
+// DELETE /api/admin/blog/:post_id
+const delete_post = async (req, res, next) => {
+  try {
+    const { post_id } = req.params;
+    const post = await BlogPost.findByIdAndDelete(post_id);
+
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Post not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Sales ────────────────────────────────────────────────────────────────────
 
 // POST /api/admin/sales/analyze
 const analyze_sales = async (req, res, next) => {
@@ -172,8 +263,11 @@ export {
   update_lead,
   convert_lead,
   generate_content,
-  design_content,
-  get_content,
-  update_content,
+  get_campaigns,
+  update_campaign,
+  get_admin_posts,
+  create_post,
+  update_post,
+  delete_post,
   analyze_sales,
 };
