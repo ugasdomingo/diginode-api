@@ -1,12 +1,18 @@
 import { Router } from 'express';
-import { handle_make_inbound, handle_content_ready, handle_stripe, handle_cal } from '../controllers/webhook_controller.js';
+import { get_conversation, save_conversation_turn, handle_make_inbound, handle_content_ready, handle_stripe, handle_cal } from '../controllers/webhook_controller.js';
 import verify_make_middleware from '../middleware/verify_make_middleware.js';
 import verify_stripe_middleware from '../middleware/verify_stripe_middleware.js';
 import verify_cal_middleware from '../middleware/verify_cal_middleware.js';
 
 const router = Router();
 
-// Receives inbound DMs forwarded by Make.com
+// Escenario 1 — Step 1: fetch (or create) lead history before AI call
+router.get('/make/conversation', verify_make_middleware, get_conversation);
+
+// Escenario 1 — Step 2: save user message + AI response after Make calls the AI
+router.post('/make/conversation', verify_make_middleware, save_conversation_turn);
+
+// Legacy: receives inbound DMs and handles AI internally (kept for rollback)
 router.post('/make/inbound', verify_make_middleware, handle_make_inbound);
 
 // Make.com notifies when a content campaign proposal is ready
