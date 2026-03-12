@@ -92,14 +92,11 @@ const generate_content = async (req, res, next) => {
     const campaign = await Campaign.create({ name, context });
 
     // Fire-and-forget: trigger Make.com scenario without blocking the response
-    const webhook_url = process.env.MAKE_CONTENT_WEBHOOK_URL;
-    if (webhook_url) {
-      fetch(webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaign_id: campaign._id.toString(), name, context }),
-      }).catch((err) => console.error('[Make content webhook error]', err.message));
-    }
+    fetch(process.env.MAKE_CONTENT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaign_id: campaign._id.toString(), name, context }),
+    }).catch((err) => console.error('[Make content webhook error]', err.message));
 
     res.status(201).json({ success: true, data: campaign });
   } catch (err) {

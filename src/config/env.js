@@ -10,9 +10,7 @@ const required_vars = [
   'RESEND_API_KEY',
   'RESEND_FROM_EMAIL',
   'CAL_BOOKING_LINK',
-  // MAKE_CONTENT_WEBHOOK_URL is optional — server starts without it,
-  // campaigns are saved but the Make.com scenario won't be triggered
-  // until the var is set in Railway.
+  'MAKE_CONTENT_WEBHOOK_URL',
 ];
 
 const validate_env = () => {
