@@ -87,7 +87,7 @@ const handle_meeting_booked = async ({ booking_id, attendee_email, attendee_name
     // No prior conversation — create a lead directly from the booking
     lead = await Lead.create({
       contact_id: attendee_email,
-      platform: 'whatsapp',
+      platform: 'website',
       name: attendee_name,
       status: 'meeting_booked',
       cal_booking_id: booking_id,

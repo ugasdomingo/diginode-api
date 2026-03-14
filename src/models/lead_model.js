@@ -22,7 +22,7 @@ const lead_schema = new mongoose.Schema(
     },
     platform: {
       type: String,
-      enum: ['whatsapp', 'instagram', 'linkedin'],
+      enum: ['whatsapp', 'instagram', 'linkedin', 'website'],
       required: true,
     },
     name: {
