@@ -70,18 +70,28 @@ const handle_invoice_paid = async (stripe_event) => {
 
 // Called when Cal.com fires MEETING_BOOKED
 const handle_meeting_booked = async ({ booking_id, attendee_email, attendee_name }) => {
-  // Update the lead by matching on email or name
-  const lead = await Lead.findOne({
+  // Try to match an existing lead by email (stored as contact_id) or by name
+  let lead = await Lead.findOne({
     $or: [
+      { contact_id: attendee_email },
       { name: { $regex: attendee_name, $options: 'i' } },
     ],
-    status: { $in: ['qualified', 'in_conversation'] },
   });
 
   if (lead) {
     lead.status = 'meeting_booked';
     lead.cal_booking_id = booking_id;
+    if (attendee_name && !lead.name) lead.name = attendee_name;
     await lead.save();
+  } else {
+    // No prior conversation — create a lead directly from the booking
+    lead = await Lead.create({
+      contact_id: attendee_email,
+      platform: 'whatsapp',
+      name: attendee_name,
+      status: 'meeting_booked',
+      cal_booking_id: booking_id,
+    });
   }
 
   return lead;
