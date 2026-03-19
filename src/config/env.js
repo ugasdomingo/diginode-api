@@ -1,5 +1,6 @@
 const required_vars = [
   'PORT',
+  'FRONTEND_URL',
   'MONGO_URI',
   'JWT_SECRET',
   'GEMINI_API_KEY',
