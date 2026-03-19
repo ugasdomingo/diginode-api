@@ -13,6 +13,11 @@ import {
   update_post,
   delete_post,
   analyze_sales,
+  get_admin_courses,
+  create_course,
+  update_course,
+  delete_course,
+  get_course_waitlist,
 } from '../controllers/admin_controller.js';
 
 const router = Router();
@@ -36,5 +41,11 @@ router.patch('/blog/:post_id', update_post);
 router.delete('/blog/:post_id', delete_post);
 
 router.post('/sales/analyze', analyze_sales);
+
+router.get('/courses', get_admin_courses);
+router.post('/courses', create_course);
+router.patch('/courses/:course_id', update_course);
+router.delete('/courses/:course_id', delete_course);
+router.get('/courses/:course_id/waitlist', get_course_waitlist);
 
 export default router;

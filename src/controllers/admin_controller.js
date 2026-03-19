@@ -3,6 +3,8 @@ import Client from '../models/client_model.js';
 import SupportTicket from '../models/support_ticket_model.js';
 import Campaign from '../models/campaign_model.js';
 import BlogPost from '../models/blog_post_model.js';
+import Course from '../models/course_model.js';
+import CourseWaitlist from '../models/course_waitlist_model.js';
 import { analyze_meeting } from '../services/ingeniero_service.js';
 import { convert_lead_to_client } from '../services/crm_service.js';
 
@@ -254,6 +256,77 @@ const analyze_sales = async (req, res, next) => {
   }
 };
 
+// GET /api/admin/courses
+const get_admin_courses = async (_req, res, next) => {
+  try {
+    const courses = await Course.find().sort({ created_at: -1 });
+    res.json({ success: true, data: courses });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/admin/courses
+const create_course = async (req, res, next) => {
+  try {
+    const { title, description, content, price, start_date, active, thumbnail_url } = req.body;
+
+    if (!title || price == null) {
+      return res.status(400).json({ success: false, message: 'title y price son obligatorios' });
+    }
+
+    const slug = slugify(title);
+    const course = await Course.create({ title, slug, description, content, price, start_date, active, thumbnail_url });
+    res.status(201).json({ success: true, data: course });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /api/admin/courses/:course_id
+const update_course = async (req, res, next) => {
+  try {
+    const { course_id } = req.params;
+    const { title, description, content, price, start_date, active, thumbnail_url } = req.body;
+
+    const update = {};
+    if (title !== undefined) update.title = title;
+    if (description !== undefined) update.description = description;
+    if (content !== undefined) update.content = content;
+    if (price !== undefined) update.price = price;
+    if (start_date !== undefined) update.start_date = start_date;
+    if (active !== undefined) update.active = active;
+    if (thumbnail_url !== undefined) update.thumbnail_url = thumbnail_url;
+
+    const course = await Course.findByIdAndUpdate(course_id, update, { new: true });
+    if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
+    res.json({ success: true, data: course });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/admin/courses/:course_id
+const delete_course = async (req, res, next) => {
+  try {
+    const course = await Course.findByIdAndDelete(req.params.course_id);
+    if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/admin/courses/:course_id/waitlist
+const get_course_waitlist = async (req, res, next) => {
+  try {
+    const entries = await CourseWaitlist.find({ course: req.params.course_id }).sort({ created_at: -1 });
+    res.json({ success: true, data: entries });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export {
   get_dashboard,
   get_leads,
@@ -267,4 +340,9 @@ export {
   update_post,
   delete_post,
   analyze_sales,
+  get_admin_courses,
+  create_course,
+  update_course,
+  delete_course,
+  get_course_waitlist,
 };

@@ -9,6 +9,7 @@ import webhook_routes from './routes/webhook_routes.js';
 import admin_routes from './routes/admin_routes.js';
 import portal_routes from './routes/portal_routes.js';
 import blog_routes from './routes/blog_routes.js';
+import course_routes from './routes/course_routes.js';
 import error_middleware from './middleware/error_middleware.js';
 
 const app = express();
@@ -50,6 +51,7 @@ app.use('/api/webhooks', webhook_routes);
 app.use('/api/admin', admin_routes);
 app.use('/api/portal', portal_routes);
 app.use('/api/blog', blog_routes);
+app.use('/api/courses', course_routes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
