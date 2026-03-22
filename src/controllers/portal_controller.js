@@ -6,13 +6,7 @@ import { analyze_ticket } from '../services/ingeniero_service.js';
 // GET /api/portal/invoices
 const get_portal_invoices = async (req, res, next) => {
   try {
-    const client = await Client.findById(req.user.client_id);
-
-    if (!client || !client.stripe_customer_id) {
-      return res.status(404).json({ success: false, message: 'No billing information found' });
-    }
-
-    const invoices = await get_invoices(client.stripe_customer_id);
+    const invoices = await get_invoices(req.user.client_id);
     res.json({ success: true, data: invoices });
   } catch (err) {
     next(err);

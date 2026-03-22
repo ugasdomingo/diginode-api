@@ -27,12 +27,7 @@ const client_schema = new mongoose.Schema(
       enum: ['latam', 'spain'],
       required: true,
     },
-    stripe_customer_id: {
-      type: String,
-      unique: true,
-      sparse: true,
-    },
-    stripe_subscription_id: {
+    paypal_subscription_id: {
       type: String,
       unique: true,
       sparse: true,

@@ -3,13 +3,13 @@ import {
   handle_successful_payment,
   handle_subscription_deleted,
   handle_invoice_paid,
+  handle_capture_completed,
   handle_meeting_booked,
 } from '../services/crm_service.js';
 import Campaign from '../models/campaign_model.js';
 import Lead from '../models/lead_model.js';
 
 // GET /api/webhooks/make/conversation?contact_id=X&platform=Y
-// Make.com fetches history for a contact before calling the AI
 const get_conversation = async (req, res, next) => {
   try {
     const { contact_id, platform } = req.query;
@@ -24,8 +24,7 @@ const get_conversation = async (req, res, next) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    // Convert Gemini format → simple {role, content} for Make
-    const history = lead.chat_history.map(msg => ({
+    const history = lead.chat_history.map((msg) => ({
       role: msg.role === 'model' ? 'assistant' : 'user',
       content: msg.parts?.[0]?.text ?? '',
     }));
@@ -46,7 +45,6 @@ const get_conversation = async (req, res, next) => {
 };
 
 // POST /api/webhooks/make/conversation
-// Make.com saves a full conversation turn (user message + AI response) after calling the AI
 const save_conversation_turn = async (req, res, next) => {
   try {
     const { contact_id, platform, user_message, ai_response, sender_name } = req.body;
@@ -63,11 +61,8 @@ const save_conversation_turn = async (req, res, next) => {
     const bookingLink = process.env.CAL_BOOKING_LINK;
     const mentionsBooking = bookingLink && ai_response.includes(bookingLink);
 
-    const update = {
-      $push: { chat_history: { $each: newTurns } },
-    };
+    const update = { $push: { chat_history: { $each: newTurns } } };
 
-    // Set name on first message if provided and not already stored
     const lead = await Lead.findOne({ contact_id, platform });
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });
@@ -77,7 +72,6 @@ const save_conversation_turn = async (req, res, next) => {
       update.$set = { name: sender_name };
     }
 
-    // Advance status
     if (mentionsBooking) {
       update.$set = { ...update.$set, status: 'qualified' };
     } else if (lead.status === 'new') {
@@ -93,7 +87,6 @@ const save_conversation_turn = async (req, res, next) => {
 };
 
 // POST /api/webhooks/make/inbound
-// Make.com forwards incoming DMs from WhatsApp, IG, LinkedIn
 const handle_make_inbound = async (req, res, next) => {
   try {
     const { contact_id, platform, message, sender_name } = req.body;
@@ -104,7 +97,6 @@ const handle_make_inbound = async (req, res, next) => {
 
     const result = await process_message({ contact_id, platform, message, sender_name });
 
-    // Make.com reads the 'reply' field and sends it back to the user
     res.json({ success: true, reply: result.response });
   } catch (err) {
     next(err);
@@ -112,7 +104,6 @@ const handle_make_inbound = async (req, res, next) => {
 };
 
 // POST /api/webhooks/make/content-ready
-// Make.com calls this when a content campaign proposal is ready
 const handle_content_ready = async (req, res, next) => {
   try {
     const { campaign_id, proposal_url } = req.body;
@@ -137,24 +128,35 @@ const handle_content_ready = async (req, res, next) => {
   }
 };
 
-// POST /api/webhooks/stripe
-// Stripe sends payment lifecycle events
-const handle_stripe = async (req, res, next) => {
+// POST /api/webhooks/paypal
+// PayPal sends payment lifecycle events
+const handle_paypal = async (req, res, next) => {
   try {
-    const event = req.stripe_event; // set by verify_stripe_middleware
+    const { event_type, resource } = req.body;
 
-    switch (event.type) {
-      case 'checkout.session.completed':
-        await handle_successful_payment(event);
+    switch (event_type) {
+      // One-time payment captured (course purchase)
+      case 'PAYMENT.CAPTURE.COMPLETED':
+        await handle_capture_completed(resource);
         break;
-      case 'invoice.paid':
-        await handle_invoice_paid(event);
+
+      // New subscription activated (AI agent client)
+      case 'BILLING.SUBSCRIPTION.ACTIVATED':
+        await handle_successful_payment(resource);
         break;
-      case 'customer.subscription.deleted':
-        await handle_subscription_deleted(event);
+
+      // Subscription cancelled → suspend client
+      case 'BILLING.SUBSCRIPTION.CANCELLED':
+        await handle_subscription_deleted(resource);
         break;
+
+      // Subscription renewal payment → store record + reactivate if suspended
+      case 'PAYMENT.SALE.COMPLETED':
+        await handle_invoice_paid(resource);
+        break;
+
       default:
-        // Acknowledge unhandled events without throwing
+        // Acknowledge all other events without throwing
         break;
     }
 
@@ -165,7 +167,6 @@ const handle_stripe = async (req, res, next) => {
 };
 
 // POST /api/webhooks/cal
-// Cal.com notifies when a meeting is booked
 const handle_cal = async (req, res, next) => {
   try {
     const { triggerEvent, payload } = req.body;
@@ -187,4 +188,4 @@ const handle_cal = async (req, res, next) => {
   }
 };
 
-export { get_conversation, save_conversation_turn, handle_make_inbound, handle_content_ready, handle_stripe, handle_cal };
+export { get_conversation, save_conversation_turn, handle_make_inbound, handle_content_ready, handle_paypal, handle_cal };

@@ -1,27 +1,27 @@
 import User from '../models/user_model.js';
 import Client from '../models/client_model.js';
 import Lead from '../models/lead_model.js';
+import Payment from '../models/payment_model.js';
 import { send_welcome_email, send_suspension_email } from './email_service.js';
 
-// Called when Stripe fires checkout.session.completed or invoice.paid for a new subscription
-const handle_successful_payment = async (stripe_event) => {
-  const session = stripe_event.data.object;
-  const { customer, subscription, customer_email, customer_details, metadata } = session;
-
-  const email = customer_email || customer_details?.email;
-  const name = customer_details?.name || metadata?.client_name || email;
-  const plan = metadata?.plan || 'latam';
+// Called when PayPal fires BILLING.SUBSCRIPTION.ACTIVATED (new recurring subscriber)
+const handle_successful_payment = async (resource) => {
+  const email = resource.subscriber?.email_address;
+  const given = resource.subscriber?.name?.given_name ?? '';
+  const surname = resource.subscriber?.name?.surname ?? '';
+  const name = `${given} ${surname}`.trim() || email;
+  const plan = resource.custom_id || 'latam';
+  const paypal_subscription_id = resource.id;
 
   // Avoid duplicates if the webhook fires more than once
-  const existing_client = await Client.findOne({ stripe_customer_id: customer });
-  if (existing_client) return existing_client;
+  const existing = await Client.findOne({ paypal_subscription_id });
+  if (existing) return existing;
 
   const client = await Client.create({
     name,
     email,
     plan,
-    stripe_customer_id: customer,
-    stripe_subscription_id: subscription,
+    paypal_subscription_id,
     setup_fee_paid: true,
     status: 'active',
   });
@@ -42,12 +42,12 @@ const handle_successful_payment = async (stripe_event) => {
   return client;
 };
 
-// Called when Stripe fires customer.subscription.deleted
-const handle_subscription_deleted = async (stripe_event) => {
-  const subscription = stripe_event.data.object;
+// Called when PayPal fires BILLING.SUBSCRIPTION.CANCELLED
+const handle_subscription_deleted = async (resource) => {
+  const paypal_subscription_id = resource.id;
 
   const client = await Client.findOneAndUpdate(
-    { stripe_subscription_id: subscription.id },
+    { paypal_subscription_id },
     { status: 'suspended' },
     { new: true }
   );
@@ -57,20 +57,44 @@ const handle_subscription_deleted = async (stripe_event) => {
   }
 };
 
-// Called when invoice.paid fires for an existing subscription renewal
-const handle_invoice_paid = async (stripe_event) => {
-  const invoice = stripe_event.data.object;
+// Called when PayPal fires PAYMENT.SALE.COMPLETED (subscription renewal)
+// Reactivates suspended clients and stores the payment record
+const handle_invoice_paid = async (resource) => {
+  const paypal_subscription_id = resource.billing_agreement_id;
+  if (!paypal_subscription_id) return;
 
-  // Reactivate if previously suspended
-  await Client.findOneAndUpdate(
-    { stripe_customer_id: invoice.customer, status: 'suspended' },
-    { status: 'active' }
+  const client = await Client.findOneAndUpdate(
+    { paypal_subscription_id, status: 'suspended' },
+    { status: 'active' },
+    { new: true }
   );
+
+  if (client) {
+    await Payment.create({
+      client_id: client._id,
+      paypal_subscription_id,
+      amount: parseFloat(resource.amount?.total ?? 0),
+      currency: resource.amount?.currency ?? 'EUR',
+      description: 'Renovación suscripción',
+    });
+  }
 };
 
-// Called when Cal.com fires MEETING_BOOKED
+// Called when PayPal fires PAYMENT.CAPTURE.COMPLETED (one-time course payment)
+const handle_capture_completed = async (resource) => {
+  await Payment.create({
+    paypal_order_id:   resource.supplementary_data?.related_ids?.order_id ?? resource.id,
+    paypal_capture_id: resource.id,
+    payer_email: resource.payer?.email_address,
+    payer_name:  `${resource.payer?.name?.given_name ?? ''} ${resource.payer?.name?.surname ?? ''}`.trim(),
+    amount:   parseFloat(resource.amount?.value ?? 0),
+    currency: resource.amount?.currency_code ?? 'EUR',
+    description: resource.purchase_units?.[0]?.description ?? 'Compra de curso',
+  });
+};
+
+// Called when Cal.com fires BOOKING_CREATED
 const handle_meeting_booked = async ({ booking_id, attendee_email, attendee_name }) => {
-  // Try to match an existing lead by email (stored as contact_id) or by name
   let lead = await Lead.findOne({
     $or: [
       { contact_id: attendee_email },
@@ -84,7 +108,6 @@ const handle_meeting_booked = async ({ booking_id, attendee_email, attendee_name
     if (attendee_name && !lead.name) lead.name = attendee_name;
     await lead.save();
   } else {
-    // No prior conversation — create a lead directly from the booking
     lead = await Lead.create({
       contact_id: attendee_email,
       platform: 'website',
@@ -116,7 +139,6 @@ const convert_lead_to_client = async (lead_id, client_data) => {
   return client;
 };
 
-// Generates a simple temporary password for the welcome email
 const generate_temp_password = () => {
   return Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-4).toUpperCase();
 };
@@ -125,6 +147,7 @@ export {
   handle_successful_payment,
   handle_subscription_deleted,
   handle_invoice_paid,
+  handle_capture_completed,
   handle_meeting_booked,
   convert_lead_to_client,
 };

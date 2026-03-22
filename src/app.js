@@ -30,10 +30,7 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
-// Stripe requires the raw body to verify signatures — must come BEFORE express.json()
-app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
-
-// JSON parsing for all other routes
+// JSON parsing for all routes
 app.use(express.json());
 
 // Rate limiting — 100 requests per 15 minutes per IP
