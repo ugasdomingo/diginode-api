@@ -1,4 +1,3 @@
-import { process_message } from '../services/recepcionista_service.js';
 import {
   handle_successful_payment,
   handle_subscription_deleted,
@@ -6,7 +5,9 @@ import {
   handle_capture_completed,
   handle_meeting_booked,
 } from '../services/crm_service.js';
+import { add_to_buffer } from '../services/message_buffer_service.js';
 import Campaign from '../models/campaign_model.js';
+import Knowledge from '../models/knowledge_model.js';
 import Lead from '../models/lead_model.js';
 
 // GET /api/webhooks/make/conversation?contact_id=X&platform=Y
@@ -103,6 +104,109 @@ const handle_make_inbound = async (req, res, next) => {
   }
 };
 
+// ── Meta direct webhooks ──────────────────────────────────────────────────────
+
+// GET /api/webhooks/meta/whatsapp  — Meta verification challenge
+const verify_whatsapp = (req, res) => {
+  const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
+  if (mode === 'subscribe' && token === process.env.META_VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+  res.sendStatus(403);
+};
+
+// POST /api/webhooks/meta/whatsapp  — Incoming WhatsApp messages
+const handle_whatsapp = (req, res) => {
+  res.sendStatus(200); // Acknowledge immediately
+  const entry = req.body?.entry?.[0];
+  const change = entry?.changes?.[0]?.value;
+  const msg = change?.messages?.[0];
+  if (!msg || msg.type !== 'text') return;
+
+  const contact_id = msg.from;
+  const message    = msg.text.body;
+  const sender_name = change.contacts?.[0]?.profile?.name ?? null;
+
+  add_to_buffer({ contact_id, platform: 'whatsapp', message, sender_name });
+};
+
+// GET /api/webhooks/meta/instagram  — Meta verification challenge
+const verify_instagram = (req, res) => {
+  const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
+  if (mode === 'subscribe' && token === process.env.META_VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+  res.sendStatus(403);
+};
+
+// POST /api/webhooks/meta/instagram  — Incoming Instagram DMs
+const handle_instagram = (req, res) => {
+  res.sendStatus(200); // Acknowledge immediately
+  const entry = req.body?.entry?.[0];
+  const messaging = entry?.messaging?.[0];
+  if (!messaging?.message?.text) return;
+
+  const contact_id  = messaging.sender.id;
+  const message     = messaging.message.text;
+  const sender_name = null; // Instagram doesn't send name in DM webhooks
+
+  add_to_buffer({ contact_id, platform: 'instagram', message, sender_name });
+};
+
+// ── Make reply — Claude's response back from Make ─────────────────────────────
+
+// POST /api/webhooks/make/reply
+const handle_make_reply = async (req, res, next) => {
+  try {
+    const { contact_id, platform, ai_response, sender_name } = req.body;
+
+    if (!contact_id || !platform || !ai_response) {
+      return res.status(400).json({ success: false, message: 'contact_id, platform and ai_response are required' });
+    }
+
+    const newTurns = [
+      { role: 'user',  parts: [{ text: '(buffered message)' }] },
+      { role: 'model', parts: [{ text: ai_response }] },
+    ];
+
+    const bookingLink    = process.env.CAL_BOOKING_LINK;
+    const mentionsBooking = bookingLink && ai_response.includes(bookingLink);
+
+    const lead = await Lead.findOne({ contact_id, platform });
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
+    const update = { $push: { chat_history: { $each: newTurns } } };
+
+    if (sender_name && !lead.name) {
+      update.$set = { name: sender_name };
+    }
+
+    if (mentionsBooking) {
+      update.$set = { ...update.$set, status: 'qualified' };
+    } else if (lead.status === 'new') {
+      update.$set = { ...update.$set, status: 'in_conversation' };
+    }
+
+    await Lead.findByIdAndUpdate(lead._id, update);
+
+    res.json({ success: true, contact_id, platform, reply: ai_response });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/webhooks/make/knowledge  — Make fetches the FAQ before calling Claude
+const get_knowledge = async (req, res, next) => {
+  try {
+    const doc = await Knowledge.findOne({ key: 'recepcionista' });
+    res.json({ success: true, content: doc?.content ?? '' });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // POST /api/webhooks/make/content-ready
 const handle_content_ready = async (req, res, next) => {
   try {
@@ -188,4 +292,10 @@ const handle_cal = async (req, res, next) => {
   }
 };
 
-export { get_conversation, save_conversation_turn, handle_make_inbound, handle_content_ready, handle_paypal, handle_cal };
+export {
+  get_conversation, save_conversation_turn, handle_make_inbound,
+  verify_whatsapp, handle_whatsapp,
+  verify_instagram, handle_instagram,
+  handle_make_reply, get_knowledge,
+  handle_content_ready, handle_paypal, handle_cal,
+};

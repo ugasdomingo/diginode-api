@@ -18,6 +18,8 @@ import {
   update_course,
   delete_course,
   get_course_waitlist,
+  get_knowledge,
+  update_knowledge,
 } from '../controllers/admin_controller.js';
 
 const router = Router();
@@ -47,5 +49,8 @@ router.post('/courses', create_course);
 router.patch('/courses/:course_id', update_course);
 router.delete('/courses/:course_id', delete_course);
 router.get('/courses/:course_id/waitlist', get_course_waitlist);
+
+router.get('/knowledge/:key', get_knowledge);
+router.put('/knowledge/:key', update_knowledge);
 
 export default router;

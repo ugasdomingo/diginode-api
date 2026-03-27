@@ -1,5 +1,6 @@
 import Lead from '../models/lead_model.js';
 import Client from '../models/client_model.js';
+import Knowledge from '../models/knowledge_model.js';
 import SupportTicket from '../models/support_ticket_model.js';
 import Campaign from '../models/campaign_model.js';
 import BlogPost from '../models/blog_post_model.js';
@@ -327,6 +328,31 @@ const get_course_waitlist = async (req, res, next) => {
   }
 };
 
+// GET /api/admin/knowledge/:key
+const get_knowledge = async (req, res, next) => {
+  try {
+    const doc = await Knowledge.findOne({ key: req.params.key });
+    res.json({ success: true, data: { key: req.params.key, content: doc?.content ?? '' } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/admin/knowledge/:key
+const update_knowledge = async (req, res, next) => {
+  try {
+    const { content } = req.body;
+    const doc = await Knowledge.findOneAndUpdate(
+      { key: req.params.key },
+      { content: content ?? '' },
+      { upsert: true, new: true }
+    );
+    res.json({ success: true, data: doc });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export {
   get_dashboard,
   get_leads,
@@ -345,4 +371,6 @@ export {
   update_course,
   delete_course,
   get_course_waitlist,
+  get_knowledge,
+  update_knowledge,
 };

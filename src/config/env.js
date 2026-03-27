@@ -14,6 +14,8 @@ const required_vars = [
   'RESEND_FROM_EMAIL',
   'CAL_BOOKING_LINK',
   'MAKE_CONTENT_WEBHOOK_URL',
+  'MAKE_RECEPCIONISTA_WEBHOOK_URL',
+  'META_VERIFY_TOKEN',
 ];
 
 const validate_env = () => {
