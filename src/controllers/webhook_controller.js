@@ -158,14 +158,14 @@ const handle_instagram = (req, res) => {
 // POST /api/webhooks/make/reply
 const handle_make_reply = async (req, res, next) => {
   try {
-    const { contact_id, platform, ai_response, sender_name } = req.body;
+    const { contact_id, platform, combined_message, ai_response, sender_name } = req.body;
 
     if (!contact_id || !platform || !ai_response) {
       return res.status(400).json({ success: false, message: 'contact_id, platform and ai_response are required' });
     }
 
     const newTurns = [
-      { role: 'user',  parts: [{ text: '(buffered message)' }] },
+      { role: 'user',  parts: [{ text: combined_message ?? '(buffered message)' }] },
       { role: 'model', parts: [{ text: ai_response }] },
     ];
 
