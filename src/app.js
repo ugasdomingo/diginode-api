@@ -11,6 +11,7 @@ import portal_routes from './routes/portal_routes.js';
 import blog_routes from './routes/blog_routes.js';
 import course_routes from './routes/course_routes.js';
 import package_routes from './routes/package_routes.js';
+import bolsa_routes from './routes/bolsa_routes.js';
 import error_middleware from './middleware/error_middleware.js';
 
 const app = express();
@@ -54,6 +55,7 @@ app.use('/api/portal', portal_routes);
 app.use('/api/blog', blog_routes);
 app.use('/api/courses', course_routes);
 app.use('/api/packages', package_routes);
+app.use('/api/bolsa', bolsa_routes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

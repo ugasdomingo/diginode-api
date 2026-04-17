@@ -6,6 +6,41 @@ import PackageSubscription from '../models/package_subscription_model.js';
 import Payment from '../models/payment_model.js';
 import { send_welcome_email, send_suspension_email } from './email_service.js';
 
+// ── Bolsa de Empleo pricing (mirrors frontend constants) ────────────────────
+const BOLSA_NAMES = {
+  sofia: 'Sofía', marcos: 'Marcos', luna: 'Luna',
+  valeria: 'Valeria', elena: 'Elena', maya: 'Maya',
+};
+const BOLSA_VALID_IDS   = Object.keys(BOLSA_NAMES);
+const BOLSA_ALL_IDS     = BOLSA_VALID_IDS;
+const BOLSA_INDIVIDUAL  = { setup: 450 };
+const BOLSA_DEPARTMENTS = [
+  { members: ['sofia', 'marcos'], setup: 750 },
+  { members: ['luna', 'valeria'], setup: 750 },
+  { members: ['elena', 'maya'],   setup: 750 },
+];
+const BOLSA_FULL_TEAM = { setup: 1950 };
+
+// Returns the setup fee for a given selection (same logic as frontend)
+const calculate_bolsa_setup = (ids) => {
+  if (ids.length === BOLSA_ALL_IDS.length && BOLSA_ALL_IDS.every(id => ids.includes(id))) {
+    return BOLSA_FULL_TEAM.setup;
+  }
+
+  let remaining = [...ids];
+  let total = 0;
+
+  for (const dept of BOLSA_DEPARTMENTS) {
+    if (dept.members.every(m => remaining.includes(m))) {
+      total += dept.setup;
+      remaining = remaining.filter(m => !dept.members.includes(m));
+    }
+  }
+
+  total += remaining.length * BOLSA_INDIVIDUAL.setup;
+  return total;
+};
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ── Checkout session creators ───────────────────────────────────────────────
@@ -32,6 +67,56 @@ const create_course_checkout_session = async ({ course_slug, course_title, amoun
     cancel_url:  `${base}/cursos/${course_slug}`,
     locale:      'es',
     metadata:    { type: 'course', course_slug },
+  });
+
+  return { url: session.url, session_id: session.id };
+};
+
+// Creates a Stripe Checkout Session for a Bolsa de Empleo setup payment.
+// Price is computed server-side — never trust the frontend amount.
+const create_bolsa_checkout_session = async ({ employee_ids, installments = 1 }) => {
+  const ids = [...new Set(employee_ids ?? [])].filter(id => BOLSA_VALID_IDS.includes(id));
+  if (ids.length === 0) {
+    const err = new Error('Selecciona al menos un empleado');
+    err.status_code = 400;
+    throw err;
+  }
+
+  const setup_total = calculate_bolsa_setup(ids);
+  const amount      = installments === 3 ? Math.ceil(setup_total / 3) : setup_total;
+
+  const names = ids.length === BOLSA_VALID_IDS.length
+    ? 'Equipo Completo'
+    : ids.map(id => BOLSA_NAMES[id]).join(', ');
+
+  const description = installments === 3
+    ? `Bolsa de Empleo IA — ${names} (cuota 1/3)`
+    : `Bolsa de Empleo IA — ${names}`;
+
+  const base = process.env.FRONTEND_URL;
+
+  const session = await stripe.checkout.sessions.create({
+    mode:                 'payment',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency:     'eur',
+          product_data: { name: description },
+          unit_amount:  Math.round(amount * 100),
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: `${base}/bolsa-de-empleo?success=true`,
+    cancel_url:  `${base}/bolsa-de-empleo`,
+    locale:      'es',
+    metadata: {
+      type:         'bolsa',
+      employee_ids: ids.join(','),
+      installments: String(installments),
+      setup_total:  String(setup_total),
+    },
   });
 
   return { url: session.url, session_id: session.id };
@@ -102,6 +187,8 @@ const handle_checkout_completed = async (session) => {
     await handle_course_checkout(session);
   } else if (type === 'package') {
     await handle_package_checkout(session);
+  } else if (type === 'bolsa') {
+    await handle_bolsa_checkout(session);
   }
 };
 
@@ -124,6 +211,32 @@ const handle_course_checkout = async (session) => {
     amount,
     currency:    (session.currency ?? 'eur').toUpperCase(),
     description: `Curso: ${slug}`,
+  });
+};
+
+// Bolsa de Empleo setup payment — stores a payment record.
+const handle_bolsa_checkout = async (session) => {
+  // Idempotency guard
+  const existing = await Payment.findOne({ stripe_session_id: session.id });
+  if (existing) return;
+
+  const email        = session.customer_details?.email;
+  const full_name    = session.customer_details?.name ?? email;
+  const amount       = (session.amount_total ?? 0) / 100;
+  const ids          = session.metadata?.employee_ids ?? '';
+  const installments = parseInt(session.metadata?.installments ?? '1', 10);
+  const setup_total  = session.metadata?.setup_total ?? '';
+
+  const suffix = installments === 3 ? ` (1/3 de ${setup_total}€)` : '';
+
+  await Payment.create({
+    payer_email:              email,
+    payer_name:               full_name,
+    stripe_session_id:        session.id,
+    stripe_payment_intent_id: session.payment_intent ?? undefined,
+    amount,
+    currency:    (session.currency ?? 'eur').toUpperCase(),
+    description: `Bolsa de Empleo IA — ${ids}${suffix}`,
   });
 };
 
@@ -250,4 +363,4 @@ const generate_temp_password = () => {
   return Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-4).toUpperCase();
 };
 
-export { create_course_checkout_session, create_package_checkout_session, handle_stripe_event };
+export { create_course_checkout_session, create_package_checkout_session, create_bolsa_checkout_session, handle_stripe_event };
