@@ -10,6 +10,7 @@ import admin_routes from './routes/admin_routes.js';
 import portal_routes from './routes/portal_routes.js';
 import blog_routes from './routes/blog_routes.js';
 import course_routes from './routes/course_routes.js';
+import package_routes from './routes/package_routes.js';
 import error_middleware from './middleware/error_middleware.js';
 
 const app = express();
@@ -30,7 +31,10 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
-// JSON parsing for all routes
+// Stripe webhooks need the raw body for signature validation — must come BEFORE express.json()
+app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+
+// JSON parsing for all other routes
 app.use(express.json());
 
 // Rate limiting — 100 requests per 15 minutes per IP
@@ -49,6 +53,7 @@ app.use('/api/admin', admin_routes);
 app.use('/api/portal', portal_routes);
 app.use('/api/blog', blog_routes);
 app.use('/api/courses', course_routes);
+app.use('/api/packages', package_routes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

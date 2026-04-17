@@ -1,6 +1,6 @@
 import Course from '../models/course_model.js';
 import CourseWaitlist from '../models/course_waitlist_model.js';
-import { create_paypal_order } from '../services/billing_service.js';
+import { create_course_checkout_session } from '../services/stripe_service.js';
 
 // GET /api/courses
 const get_courses = async (req, res, next) => {
@@ -47,7 +47,7 @@ const join_waitlist = async (req, res, next) => {
 };
 
 // POST /api/courses/:slug/checkout
-// Creates a PayPal order and returns the approval URL for the frontend to redirect to
+// Creates a Stripe Checkout Session and returns the URL to redirect the user to.
 const create_course_checkout = async (req, res, next) => {
   try {
     const course = await Course.findOne({ slug: req.params.slug, active: true });
@@ -55,16 +55,13 @@ const create_course_checkout = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Curso no encontrado o no disponible' });
     }
 
-    const base = process.env.FRONTEND_URL;
-    const { url, order_id } = await create_paypal_order({
-      title:       course.title,
-      amount:      course.price,
-      currency:    'EUR',
-      success_url: `${base}/cursos/${course.slug}?pago=ok`,
-      cancel_url:  `${base}/cursos/${course.slug}`,
+    const { url, session_id } = await create_course_checkout_session({
+      course_slug:  course.slug,
+      course_title: course.title,
+      amount:       course.price,
     });
 
-    res.json({ success: true, url, order_id });
+    res.json({ success: true, url, session_id });
   } catch (err) {
     next(err);
   }

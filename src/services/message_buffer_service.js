@@ -38,11 +38,18 @@ async function flush_buffer(contact_id) {
     await Lead.findByIdAndUpdate(lead._id, { name: sender_name });
   }
 
-  // Convert stored Gemini format → simple { role, content } for Claude
+  // Convert stored Gemini format → Make/Claude compatible { role, inputType, content }
   const history = lead.chat_history.map((msg) => ({
     role: msg.role === 'model' ? 'assistant' : 'user',
+    inputType: 'single',
     content: msg.parts?.[0]?.text ?? '',
   }));
+
+  // Append the new user message to form the complete messages array for Claude
+  const messages = [
+    ...history,
+    { role: 'user', inputType: 'single', content: combined_message },
+  ];
 
   // Fire Make scenario webhook (fire-and-forget)
   fetch(process.env.MAKE_RECEPCIONISTA_WEBHOOK_URL, {
@@ -53,7 +60,7 @@ async function flush_buffer(contact_id) {
       platform,
       sender_name: sender_name ?? '',
       combined_message,
-      history,
+      messages,
     }),
   }).catch((err) => console.error('[Buffer flush error]', err.message));
 }

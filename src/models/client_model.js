@@ -24,13 +24,8 @@ const client_schema = new mongoose.Schema(
     },
     plan: {
       type: String,
-      enum: ['latam', 'spain'],
+      enum: ['latam', 'spain', 'despacho-digital'],
       required: true,
-    },
-    paypal_subscription_id: {
-      type: String,
-      unique: true,
-      sparse: true,
     },
     setup_fee_paid: {
       type: Boolean,

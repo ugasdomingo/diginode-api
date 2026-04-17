@@ -1,10 +1,5 @@
-import {
-  handle_successful_payment,
-  handle_subscription_deleted,
-  handle_invoice_paid,
-  handle_capture_completed,
-  handle_meeting_booked,
-} from '../services/crm_service.js';
+import { handle_meeting_booked } from '../services/crm_service.js';
+import { handle_stripe_event } from '../services/stripe_service.js';
 import { add_to_buffer } from '../services/message_buffer_service.js';
 import Campaign from '../models/campaign_model.js';
 import Knowledge from '../models/knowledge_model.js';
@@ -26,7 +21,7 @@ const get_conversation = async (req, res, next) => {
     );
 
     const history = lead.chat_history.map((msg) => ({
-      role: msg.role === 'model' ? 'assistant' : 'user',
+      role:    msg.role === 'model' ? 'assistant' : 'user',
       content: msg.parts?.[0]?.text ?? '',
     }));
 
@@ -34,9 +29,9 @@ const get_conversation = async (req, res, next) => {
       success: true,
       data: {
         lead_id: lead._id,
-        is_new: lead.chat_history.length === 0,
-        name: lead.name ?? null,
-        status: lead.status,
+        is_new:  lead.chat_history.length === 0,
+        name:    lead.name ?? null,
+        status:  lead.status,
         history,
       },
     });
@@ -59,7 +54,7 @@ const save_conversation_turn = async (req, res, next) => {
       { role: 'model', parts: [{ text: ai_response }] },
     ];
 
-    const bookingLink = process.env.CAL_BOOKING_LINK;
+    const bookingLink    = process.env.CAL_BOOKING_LINK;
     const mentionsBooking = bookingLink && ai_response.includes(bookingLink);
 
     const update = { $push: { chat_history: { $each: newTurns } } };
@@ -117,17 +112,18 @@ const verify_whatsapp = (req, res) => {
 
 // POST /api/webhooks/meta/whatsapp  — Incoming WhatsApp messages
 const handle_whatsapp = (req, res) => {
-  res.sendStatus(200); // Acknowledge immediately
-  const entry = req.body?.entry?.[0];
-  const change = entry?.changes?.[0]?.value;
-  const msg = change?.messages?.[0];
+  res.sendStatus(200);
+  const entry   = req.body?.entry?.[0];
+  const change  = entry?.changes?.[0]?.value;
+  const msg     = change?.messages?.[0];
   if (!msg || msg.type !== 'text') return;
 
-  const contact_id = msg.from;
-  const message    = msg.text.body;
-  const sender_name = change.contacts?.[0]?.profile?.name ?? null;
-
-  add_to_buffer({ contact_id, platform: 'whatsapp', message, sender_name });
+  add_to_buffer({
+    contact_id:  msg.from,
+    platform:    'whatsapp',
+    message:     msg.text.body,
+    sender_name: change.contacts?.[0]?.profile?.name ?? null,
+  });
 };
 
 // GET /api/webhooks/meta/instagram  — Meta verification challenge
@@ -141,19 +137,20 @@ const verify_instagram = (req, res) => {
 
 // POST /api/webhooks/meta/instagram  — Incoming Instagram DMs
 const handle_instagram = (req, res) => {
-  res.sendStatus(200); // Acknowledge immediately
-  const entry = req.body?.entry?.[0];
+  res.sendStatus(200);
+  const entry     = req.body?.entry?.[0];
   const messaging = entry?.messaging?.[0];
   if (!messaging?.message?.text) return;
 
-  const contact_id  = messaging.sender.id;
-  const message     = messaging.message.text;
-  const sender_name = null; // Instagram doesn't send name in DM webhooks
-
-  add_to_buffer({ contact_id, platform: 'instagram', message, sender_name });
+  add_to_buffer({
+    contact_id:  messaging.sender.id,
+    platform:    'instagram',
+    message:     messaging.message.text,
+    sender_name: null,
+  });
 };
 
-// ── Make reply — Claude's response back from Make ─────────────────────────────
+// ── Make reply ────────────────────────────────────────────────────────────────
 
 // POST /api/webhooks/make/reply
 const handle_make_reply = async (req, res, next) => {
@@ -197,7 +194,7 @@ const handle_make_reply = async (req, res, next) => {
   }
 };
 
-// GET /api/webhooks/make/knowledge  — Make fetches the FAQ before calling Claude
+// GET /api/webhooks/make/knowledge
 const get_knowledge = async (req, res, next) => {
   try {
     const doc = await Knowledge.findOne({ key: 'recepcionista' });
@@ -232,44 +229,6 @@ const handle_content_ready = async (req, res, next) => {
   }
 };
 
-// POST /api/webhooks/paypal
-// PayPal sends payment lifecycle events
-const handle_paypal = async (req, res, next) => {
-  try {
-    const { event_type, resource } = req.body;
-
-    switch (event_type) {
-      // One-time payment captured (course purchase)
-      case 'PAYMENT.CAPTURE.COMPLETED':
-        await handle_capture_completed(resource);
-        break;
-
-      // New subscription activated (AI agent client)
-      case 'BILLING.SUBSCRIPTION.ACTIVATED':
-        await handle_successful_payment(resource);
-        break;
-
-      // Subscription cancelled → suspend client
-      case 'BILLING.SUBSCRIPTION.CANCELLED':
-        await handle_subscription_deleted(resource);
-        break;
-
-      // Subscription renewal payment → store record + reactivate if suspended
-      case 'PAYMENT.SALE.COMPLETED':
-        await handle_invoice_paid(resource);
-        break;
-
-      default:
-        // Acknowledge all other events without throwing
-        break;
-    }
-
-    res.json({ received: true });
-  } catch (err) {
-    next(err);
-  }
-};
-
 // POST /api/webhooks/cal
 const handle_cal = async (req, res, next) => {
   try {
@@ -280,12 +239,22 @@ const handle_cal = async (req, res, next) => {
       const attendee = attendees?.[0];
 
       await handle_meeting_booked({
-        booking_id: uid,
+        booking_id:     uid,
         attendee_email: attendee?.email,
-        attendee_name: attendee?.name,
+        attendee_name:  attendee?.name,
       });
     }
 
+    res.json({ received: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/webhooks/stripe
+const handle_stripe = async (req, res, next) => {
+  try {
+    await handle_stripe_event(req.stripe_event);
     res.json({ received: true });
   } catch (err) {
     next(err);
@@ -297,5 +266,5 @@ export {
   verify_whatsapp, handle_whatsapp,
   verify_instagram, handle_instagram,
   handle_make_reply, get_knowledge,
-  handle_content_ready, handle_paypal, handle_cal,
+  handle_content_ready, handle_cal, handle_stripe,
 };

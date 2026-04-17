@@ -1,22 +1,21 @@
 import mongoose from 'mongoose';
 
-// Stores completed PayPal payments (one-time and subscription renewals)
+// Stores completed Stripe payments (one-time courses and subscription renewals)
 const payment_schema = new mongoose.Schema(
   {
     client_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Client',
     },
-    paypal_order_id: {
+    // Stripe Checkout Session ID — used as idempotency key
+    stripe_session_id: {
       type: String,
       unique: true,
       sparse: true,
     },
-    paypal_capture_id: {
+    stripe_payment_intent_id: {
       type: String,
-    },
-    paypal_subscription_id: {
-      type: String,
+      sparse: true,
     },
     payer_email: {
       type: String,
