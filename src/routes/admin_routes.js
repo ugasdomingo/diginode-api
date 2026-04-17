@@ -20,6 +20,10 @@ import {
   get_course_waitlist,
   get_knowledge,
   update_knowledge,
+  get_admin_packages,
+  create_package,
+  update_package,
+  delete_package,
 } from '../controllers/admin_controller.js';
 
 const router = Router();
@@ -52,5 +56,10 @@ router.get('/courses/:course_id/waitlist', get_course_waitlist);
 
 router.get('/knowledge/:key', get_knowledge);
 router.put('/knowledge/:key', update_knowledge);
+
+router.get('/packages', get_admin_packages);
+router.post('/packages', create_package);
+router.patch('/packages/:package_id', update_package);
+router.delete('/packages/:package_id', delete_package);
 
 export default router;
