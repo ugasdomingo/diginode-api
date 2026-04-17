@@ -46,7 +46,7 @@ async function flush_buffer(contact_id) {
   }));
 
   // Append the new user message to form the complete messages array for Claude
-  const messages = [
+  const full_messages = [
     ...history,
     { role: 'user', inputType: 'single', content: combined_message },
   ];
@@ -60,7 +60,7 @@ async function flush_buffer(contact_id) {
       platform,
       sender_name: sender_name ?? '',
       combined_message,
-      messages,
+      messages: full_messages,
     }),
   }).catch((err) => console.error('[Buffer flush error]', err.message));
 }
