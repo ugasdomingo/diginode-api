@@ -72,6 +72,34 @@ const create_course_checkout_session = async ({ course_slug, course_title, amoun
   return { url: session.url, session_id: session.id };
 };
 
+// Creates a Stripe Checkout Session for the Despacho Digital subscription.
+// Uses dynamic price_data — no pre-created Stripe Price ID needed.
+const create_despacho_checkout_session = async () => {
+  const base = process.env.FRONTEND_URL;
+
+  const session = await stripe.checkout.sessions.create({
+    mode:                 'subscription',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency:     'eur',
+          product_data: { name: 'Despacho Digital — Web + Panel + 2 Empleados IA' },
+          unit_amount:  30000, // 300 € en céntimos
+          recurring:    { interval: 'month' },
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: `${base}/despacho-digital?success=true`,
+    cancel_url:  `${base}/despacho-digital`,
+    locale:      'es',
+    metadata:    { type: 'package', package_slug: 'despacho-digital' },
+  });
+
+  return { url: session.url, session_id: session.id };
+};
+
 // Creates a Stripe Checkout Session for a Bolsa de Empleo setup payment.
 // Price is computed server-side — never trust the frontend amount.
 const create_bolsa_checkout_session = async ({ employee_ids, installments = 1 }) => {
@@ -363,4 +391,4 @@ const generate_temp_password = () => {
   return Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-4).toUpperCase();
 };
 
-export { create_course_checkout_session, create_package_checkout_session, create_bolsa_checkout_session, handle_stripe_event };
+export { create_course_checkout_session, create_package_checkout_session, create_despacho_checkout_session, create_bolsa_checkout_session, handle_stripe_event };
