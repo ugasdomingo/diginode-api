@@ -271,14 +271,14 @@ const get_admin_courses = async (_req, res, next) => {
 // POST /api/admin/courses
 const create_course = async (req, res, next) => {
   try {
-    const { title, description, content, price, start_date, active, thumbnail_url } = req.body;
+    const { title, description, content, price, start_date, status, thumbnail_url } = req.body;
 
     if (!title || price == null) {
       return res.status(400).json({ success: false, message: 'title y price son obligatorios' });
     }
 
     const slug = slugify(title);
-    const course = await Course.create({ title, slug, description, content, price, start_date, active, thumbnail_url });
+    const course = await Course.create({ title, slug, description, content, price, start_date, status, thumbnail_url });
     res.status(201).json({ success: true, data: course });
   } catch (err) {
     next(err);
@@ -289,7 +289,7 @@ const create_course = async (req, res, next) => {
 const update_course = async (req, res, next) => {
   try {
     const { course_id } = req.params;
-    const { title, description, content, price, start_date, active, thumbnail_url } = req.body;
+    const { title, description, content, price, start_date, status, thumbnail_url } = req.body;
 
     const update = {};
     if (title !== undefined) update.title = title;
@@ -297,7 +297,7 @@ const update_course = async (req, res, next) => {
     if (content !== undefined) update.content = content;
     if (price !== undefined) update.price = price;
     if (start_date !== undefined) update.start_date = start_date;
-    if (active !== undefined) update.active = active;
+    if (status !== undefined) update.status = status;
     if (thumbnail_url !== undefined) update.thumbnail_url = thumbnail_url;
 
     const course = await Course.findByIdAndUpdate(course_id, update, { new: true });

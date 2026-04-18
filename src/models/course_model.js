@@ -8,7 +8,8 @@ const course_schema = new mongoose.Schema(
     content: { type: String, default: '' },
     price: { type: Number, required: true },
     start_date: { type: Date, default: null },
-    active: { type: Boolean, default: false },
+    // draft → solo visible en admin | inactive → visible, en preventa | active → visible y comprable
+    status: { type: String, enum: ['draft', 'active', 'inactive'], default: 'draft' },
     thumbnail_url: { type: String, default: '' },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }

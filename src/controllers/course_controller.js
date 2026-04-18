@@ -2,20 +2,20 @@ import Course from '../models/course_model.js';
 import CourseWaitlist from '../models/course_waitlist_model.js';
 import { create_course_checkout_session } from '../services/stripe_service.js';
 
-// GET /api/courses
+// GET /api/courses — public: excludes drafts
 const get_courses = async (req, res, next) => {
   try {
-    const courses = await Course.find().select('-content').sort({ created_at: -1 });
+    const courses = await Course.find({ status: { $ne: 'draft' } }).select('-content').sort({ created_at: -1 });
     res.json({ success: true, data: courses });
   } catch (err) {
     next(err);
   }
 };
 
-// GET /api/courses/:slug
+// GET /api/courses/:slug — public: excludes drafts
 const get_course_by_slug = async (req, res, next) => {
   try {
-    const course = await Course.findOne({ slug: req.params.slug });
+    const course = await Course.findOne({ slug: req.params.slug, status: { $ne: 'draft' } });
     if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
     res.json({ success: true, data: course });
   } catch (err) {
@@ -26,7 +26,7 @@ const get_course_by_slug = async (req, res, next) => {
 // POST /api/courses/:slug/waitlist
 const join_waitlist = async (req, res, next) => {
   try {
-    const course = await Course.findOne({ slug: req.params.slug, active: false });
+    const course = await Course.findOne({ slug: req.params.slug, status: 'inactive' });
     if (!course) {
       return res.status(404).json({ success: false, message: 'Curso no encontrado o ya disponible' });
     }
@@ -50,7 +50,7 @@ const join_waitlist = async (req, res, next) => {
 // Creates a Stripe Checkout Session and returns the URL to redirect the user to.
 const create_course_checkout = async (req, res, next) => {
   try {
-    const course = await Course.findOne({ slug: req.params.slug, active: true });
+    const course = await Course.findOne({ slug: req.params.slug, status: 'active' });
     if (!course) {
       return res.status(404).json({ success: false, message: 'Curso no encontrado o no disponible' });
     }
