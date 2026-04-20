@@ -271,14 +271,22 @@ const get_admin_courses = async (_req, res, next) => {
 // POST /api/admin/courses
 const create_course = async (req, res, next) => {
   try {
-    const { title, description, content, price, start_date, status, thumbnail_url } = req.body;
+    const { title, description, content, price, start_date, status, thumbnail_url, is_for_me, max_spots, spots_taken } = req.body;
 
     if (!title || price == null) {
       return res.status(400).json({ success: false, message: 'title y price son obligatorios' });
     }
+    if (!is_for_me?.trim()) {
+      return res.status(400).json({ success: false, message: 'El texto "¿Es para mí?" es obligatorio' });
+    }
 
     const slug = slugify(title);
-    const course = await Course.create({ title, slug, description, content, price, start_date, status, thumbnail_url });
+    const course = await Course.create({
+      title, slug, description, content, price, start_date, status, thumbnail_url,
+      is_for_me: is_for_me.trim(),
+      max_spots:   max_spots   ?? null,
+      spots_taken: spots_taken ?? 0,
+    });
     res.status(201).json({ success: true, data: course });
   } catch (err) {
     next(err);
@@ -289,16 +297,19 @@ const create_course = async (req, res, next) => {
 const update_course = async (req, res, next) => {
   try {
     const { course_id } = req.params;
-    const { title, description, content, price, start_date, status, thumbnail_url } = req.body;
+    const { title, description, content, price, start_date, status, thumbnail_url, is_for_me, max_spots, spots_taken } = req.body;
 
     const update = {};
-    if (title !== undefined) update.title = title;
-    if (description !== undefined) update.description = description;
-    if (content !== undefined) update.content = content;
-    if (price !== undefined) update.price = price;
-    if (start_date !== undefined) update.start_date = start_date;
-    if (status !== undefined) update.status = status;
+    if (title        !== undefined) update.title         = title;
+    if (description  !== undefined) update.description   = description;
+    if (content      !== undefined) update.content       = content;
+    if (price        !== undefined) update.price         = price;
+    if (start_date   !== undefined) update.start_date    = start_date;
+    if (status       !== undefined) update.status        = status;
     if (thumbnail_url !== undefined) update.thumbnail_url = thumbnail_url;
+    if (is_for_me    !== undefined) update.is_for_me     = is_for_me.trim();
+    if (max_spots    !== undefined) update.max_spots     = max_spots ?? null;
+    if (spots_taken  !== undefined) update.spots_taken   = Math.max(0, spots_taken ?? 0);
 
     const course = await Course.findByIdAndUpdate(course_id, update, { new: true });
     if (!course) return res.status(404).json({ success: false, message: 'Course not found' });

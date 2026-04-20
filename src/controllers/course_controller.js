@@ -26,9 +26,15 @@ const get_course_by_slug = async (req, res, next) => {
 // POST /api/courses/:slug/waitlist
 const join_waitlist = async (req, res, next) => {
   try {
-    const course = await Course.findOne({ slug: req.params.slug, status: 'inactive' });
+    const course = await Course.findOne({ slug: req.params.slug, status: { $ne: 'draft' } });
     if (!course) {
-      return res.status(404).json({ success: false, message: 'Curso no encontrado o ya disponible' });
+      return res.status(404).json({ success: false, message: 'Curso no encontrado' });
+    }
+
+    // Solo se admite lista de espera en preventa O cuando el curso está lleno
+    const is_full = course.max_spots != null && course.spots_taken >= course.max_spots;
+    if (course.status === 'active' && !is_full) {
+      return res.status(400).json({ success: false, message: 'Este curso tiene plazas disponibles' });
     }
 
     const { name, email, phone } = req.body;
@@ -47,12 +53,17 @@ const join_waitlist = async (req, res, next) => {
 };
 
 // POST /api/courses/:slug/checkout
-// Creates a Stripe Checkout Session and returns the URL to redirect the user to.
 const create_course_checkout = async (req, res, next) => {
   try {
     const course = await Course.findOne({ slug: req.params.slug, status: 'active' });
     if (!course) {
       return res.status(404).json({ success: false, message: 'Curso no encontrado o no disponible' });
+    }
+
+    // Bloquear si no quedan plazas
+    const is_full = course.max_spots != null && course.spots_taken >= course.max_spots;
+    if (is_full) {
+      return res.status(409).json({ success: false, message: 'No quedan plazas disponibles' });
     }
 
     const { url, session_id } = await create_course_checkout_session({

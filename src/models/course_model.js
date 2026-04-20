@@ -11,6 +11,9 @@ const course_schema = new mongoose.Schema(
     // draft → solo visible en admin | inactive → visible, en preventa | active → visible y comprable
     status: { type: String, enum: ['draft', 'active', 'inactive'], default: 'draft' },
     thumbnail_url: { type: String, default: '' },
+    is_for_me:     { type: String, trim: true, default: '' },
+    max_spots:     { type: Number, default: null },           // null = ilimitado
+    spots_taken:   { type: Number, default: 0, min: 0 },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );
