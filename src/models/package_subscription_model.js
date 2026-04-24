@@ -39,6 +39,14 @@ const package_subscription_schema = new mongoose.Schema(
     minimum_end_date: {
       type: Date,
     },
+    // Next scheduled billing date (kept in sync by invoice.payment_succeeded webhook)
+    next_billing_date: {
+      type: Date,
+    },
+    // Monthly amount actually charged (stored at creation, updated on renewal rate change)
+    amount_monthly: {
+      type: Number,
+    },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );

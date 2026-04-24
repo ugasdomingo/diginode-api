@@ -1,17 +1,15 @@
 import Payment from '../models/payment_model.js';
+import PackageSubscription from '../models/package_subscription_model.js';
 
-// Returns stored payment records for a client (used by the portal)
-const get_invoices = async (client_id) => {
-  const payments = await Payment.find({ client_id }).sort({ created_at: -1 }).limit(24);
+// Returns the full billing overview for a client in a single parallel DB call.
+// Used by GET /api/portal/me to avoid multiple sequential requests.
+const get_client_billing = async (client_id) => {
+  const [payments, subscription] = await Promise.all([
+    Payment.find({ client_id }).sort({ created_at: -1 }).limit(50),
+    PackageSubscription.findOne({ client_id, status: { $ne: 'canceled' } }).sort({ created_at: -1 }),
+  ]);
 
-  return payments.map((p) => ({
-    id:          p._id,
-    amount:      p.amount,
-    currency:    p.currency,
-    status:      'paid',
-    created_at:  p.created_at,
-    description: p.description ?? 'Pago',
-  }));
+  return { payments, subscription };
 };
 
-export { get_invoices };
+export { get_client_billing };

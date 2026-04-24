@@ -24,6 +24,9 @@ import {
   create_package,
   update_package,
   delete_package,
+  get_admin_clients,
+  get_admin_client_detail,
+  create_payment_link,
 } from '../controllers/admin_controller.js';
 
 const router = Router();
@@ -61,5 +64,9 @@ router.get('/packages', get_admin_packages);
 router.post('/packages', create_package);
 router.patch('/packages/:package_id', update_package);
 router.delete('/packages/:package_id', delete_package);
+
+router.get('/clients',             get_admin_clients);
+router.get('/clients/:client_id',  get_admin_client_detail);
+router.post('/payment-links',      create_payment_link);
 
 export default router;

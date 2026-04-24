@@ -22,10 +22,11 @@ const login = async (req, res, next) => {
       success: true,
       token,
       user: {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        client_id: user.client_id,
+        id:                       user._id,
+        email:                    user.email,
+        role:                     user.role,
+        client_id:                user.client_id,
+        password_change_required: user.password_change_required ?? false,
       },
     });
   } catch (err) {
@@ -33,4 +34,25 @@ const login = async (req, res, next) => {
   }
 };
 
-export { login };
+const change_password = async (req, res, next) => {
+  try {
+    const { new_password } = req.body;
+
+    if (!new_password || new_password.length < 8) {
+      return res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+
+    const password_hash = await User.hash_password(new_password);
+
+    await User.findByIdAndUpdate(req.user._id, {
+      password_hash,
+      password_change_required: false,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export { login, change_password };

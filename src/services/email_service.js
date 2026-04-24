@@ -15,10 +15,10 @@ const send_welcome_email = async (to, { name, temp_password }) => {
         <li><strong>Email:</strong> ${to}</li>
         <li><strong>Contraseña temporal:</strong> ${temp_password}</li>
       </ul>
-      <p>Te recomendamos cambiar tu contraseña al iniciar sesión.</p>
+      <p><strong>Deberás cambiar tu contraseña la primera vez que inicies sesión.</strong></p>
       <p>Cualquier duda, abre un ticket desde el portal.</p>
       <br>
-      <p>El equipo de DigiEmpresas</p>
+      <p>El equipo de Diginode</p>
     `,
   });
 };
@@ -33,7 +33,7 @@ const send_suspension_email = async (to, { name }) => {
       <p>Tu suscripción ha sido pausada porque no pudimos procesar el último pago.</p>
       <p>Para reactivar tu acceso, actualiza tu método de pago desde el portal.</p>
       <br>
-      <p>El equipo de DigiEmpresas</p>
+      <p>El equipo de Diginode</p>
     `,
   });
 };

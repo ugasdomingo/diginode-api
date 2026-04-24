@@ -1,5 +1,7 @@
 import Lead from '../models/lead_model.js';
 import Client from '../models/client_model.js';
+import Payment from '../models/payment_model.js';
+import PackageSubscription from '../models/package_subscription_model.js';
 import Knowledge from '../models/knowledge_model.js';
 import SupportTicket from '../models/support_ticket_model.js';
 import Campaign from '../models/campaign_model.js';
@@ -9,6 +11,7 @@ import CourseWaitlist from '../models/course_waitlist_model.js';
 import Package from '../models/package_model.js';
 import { analyze_meeting } from '../services/ingeniero_service.js';
 import { convert_lead_to_client } from '../services/crm_service.js';
+import { create_manual_checkout_session } from '../services/stripe_service.js';
 
 // GET /api/admin/dashboard
 const get_dashboard = async (_req, res, next) => {
@@ -442,6 +445,78 @@ const update_knowledge = async (req, res, next) => {
   }
 };
 
+// ─── Clients Admin ────────────────────────────────────────────────────────────
+
+// GET /api/admin/clients
+const get_admin_clients = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 30, status, plan } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (plan)   filter.plan   = plan;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [clients, total] = await Promise.all([
+      Client.find(filter).sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      Client.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, data: clients, total, page: Number(page) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/admin/clients/:client_id
+// Returns client detail with full purchase history and subscription
+const get_admin_client_detail = async (req, res, next) => {
+  try {
+    const { client_id } = req.params;
+
+    const [client, payments, subscription] = await Promise.all([
+      Client.findById(client_id),
+      Payment.find({ client_id }).sort({ created_at: -1 }),
+      PackageSubscription.findOne({ client_id, status: { $ne: 'canceled' } }),
+    ]);
+
+    if (!client) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
+
+    res.json({ success: true, data: { client, payments, subscription } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/admin/payment-links
+// Generates a Stripe Checkout link to charge a client for anything (installments, extras, etc.)
+const create_payment_link = async (req, res, next) => {
+  try {
+    const { client_id, label, amount, installment_number, installment_total } = req.body;
+
+    if (!client_id || !label || amount == null) {
+      return res.status(400).json({ success: false, message: 'client_id, label y amount son obligatorios' });
+    }
+    if (amount <= 0) {
+      return res.status(400).json({ success: false, message: 'El importe debe ser mayor que 0' });
+    }
+
+    const client = await Client.findById(client_id);
+    if (!client) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
+
+    const { url, session_id } = await create_manual_checkout_session({
+      client_id,
+      label,
+      amount,
+      installment_number: installment_number ?? null,
+      installment_total:  installment_total  ?? null,
+    });
+
+    res.json({ success: true, url, session_id });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export {
   get_dashboard,
   get_leads,
@@ -466,4 +541,7 @@ export {
   create_package,
   update_package,
   delete_package,
+  get_admin_clients,
+  get_admin_client_detail,
+  create_payment_link,
 };

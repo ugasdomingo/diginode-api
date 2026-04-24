@@ -24,7 +24,7 @@ const client_schema = new mongoose.Schema(
     },
     plan: {
       type: String,
-      enum: ['latam', 'spain', 'despacho-digital'],
+      enum: ['latam', 'spain', 'despacho-digital', 'course', 'bolsa'],
       required: true,
     },
     setup_fee_paid: {

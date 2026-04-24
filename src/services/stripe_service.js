@@ -43,10 +43,64 @@ const calculate_bolsa_setup = (ids) => {
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+// ── Shared helpers ──────────────────────────────────────────────────────────
+
+// Generates a random temporary password (14 chars, alphanumeric).
+const generate_temp_password = () =>
+  Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-4).toUpperCase();
+
+// Fetches the Stripe receipt URL for a PaymentIntent.
+// Returns null if unavailable — never throws.
+const get_receipt_url = async (payment_intent_id) => {
+  if (!payment_intent_id) return null;
+  try {
+    const pi = await stripe.paymentIntents.retrieve(payment_intent_id, {
+      expand: ['latest_charge'],
+    });
+    return pi.latest_charge?.receipt_url ?? null;
+  } catch {
+    return null;
+  }
+};
+
+// Ensures a Client + User account exists for the given email.
+// Handles all cases:
+//   - New email:               creates Client + User, sends welcome email
+//   - Client exists, no User:  creates User, sends welcome email
+//   - Both exist:              returns existing client, skips email
+//   - User exists, no client:  creates Client, links User
+const ensure_account = async ({ email, full_name, plan }) => {
+  if (!email) return null;
+
+  let client = await Client.findOne({ email });
+
+  if (!client) {
+    client = await Client.create({ name: full_name, email, plan, status: 'active' });
+  }
+
+  const existing_user = await User.findOne({ email });
+
+  if (!existing_user) {
+    const temp_password = generate_temp_password();
+    const password_hash = await User.hash_password(temp_password);
+    await User.create({
+      email,
+      password_hash,
+      role:                     'client',
+      client_id:                client._id,
+      password_change_required: true,
+    });
+    await send_welcome_email(email, { name: full_name, temp_password });
+  } else if (!existing_user.client_id) {
+    // Edge case: user exists but was never linked to a client record
+    await User.findByIdAndUpdate(existing_user._id, { client_id: client._id });
+  }
+
+  return client;
+};
+
 // ── Checkout session creators ───────────────────────────────────────────────
 
-// Creates a Stripe Checkout Session for a one-time course purchase.
-// Returns { url, session_id } — frontend redirects user to `url`.
 const create_course_checkout_session = async ({ course_slug, course_title, amount }) => {
   const base = process.env.FRONTEND_URL;
 
@@ -58,22 +112,20 @@ const create_course_checkout_session = async ({ course_slug, course_title, amoun
         price_data: {
           currency:     'eur',
           product_data: { name: course_title },
-          unit_amount:  Math.round(amount * 100), // Stripe uses cents
+          unit_amount:  Math.round(amount * 100),
         },
         quantity: 1,
       },
     ],
-    success_url: `${base}/cursos/${course_slug}?pago=ok`,
+    success_url: `${base}/gracias?tipo=curso&slug=${course_slug}`,
     cancel_url:  `${base}/cursos/${course_slug}`,
     locale:      'es',
-    metadata:    { type: 'course', course_slug },
+    metadata:    { type: 'course', course_slug, course_title },
   });
 
   return { url: session.url, session_id: session.id };
 };
 
-// Creates a Stripe Checkout Session for the Despacho Digital subscription.
-// Uses dynamic price_data — no pre-created Stripe Price ID needed.
 const create_despacho_checkout_session = async () => {
   const base = process.env.FRONTEND_URL;
 
@@ -85,13 +137,13 @@ const create_despacho_checkout_session = async () => {
         price_data: {
           currency:     'eur',
           product_data: { name: 'Despacho Digital — Web + Panel + 2 Empleados IA' },
-          unit_amount:  30000, // 300 € en céntimos
+          unit_amount:  30000,
           recurring:    { interval: 'month' },
         },
         quantity: 1,
       },
     ],
-    success_url: `${base}/despacho-digital?success=true`,
+    success_url: `${base}/gracias?tipo=despacho`,
     cancel_url:  `${base}/despacho-digital`,
     locale:      'es',
     metadata:    { type: 'package', package_slug: 'despacho-digital' },
@@ -100,8 +152,6 @@ const create_despacho_checkout_session = async () => {
   return { url: session.url, session_id: session.id };
 };
 
-// Creates a Stripe Checkout Session for a Bolsa de Empleo setup payment.
-// Price is computed server-side — never trust the frontend amount.
 const create_bolsa_checkout_session = async ({ employee_ids, installments = 1 }) => {
   const ids = [...new Set(employee_ids ?? [])].filter(id => BOLSA_VALID_IDS.includes(id));
   if (ids.length === 0) {
@@ -136,22 +186,22 @@ const create_bolsa_checkout_session = async ({ employee_ids, installments = 1 })
         quantity: 1,
       },
     ],
-    success_url: `${base}/bolsa-de-empleo?success=true`,
+    success_url: `${base}/gracias?tipo=bolsa`,
     cancel_url:  `${base}/bolsa-de-empleo`,
     locale:      'es',
     metadata: {
-      type:         'bolsa',
-      employee_ids: ids.join(','),
-      installments: String(installments),
-      setup_total:  String(setup_total),
+      type:              'bolsa',
+      employee_ids:      ids.join(','),
+      employee_label:    names,
+      installments:      String(installments),
+      installment_number: '1',
+      setup_total:       String(setup_total),
     },
   });
 
   return { url: session.url, session_id: session.id };
 };
 
-// Creates a Stripe Checkout Session for a recurring package subscription.
-// Returns { url, session_id } — frontend redirects user to `url`.
 const create_package_checkout_session = async ({ package_slug }) => {
   const pkg = await Package.findOne({ slug: package_slug, active: true });
 
@@ -173,7 +223,7 @@ const create_package_checkout_session = async ({ package_slug }) => {
     mode:                 'subscription',
     payment_method_types: ['card'],
     line_items:           [{ price: pkg.stripe_price_id, quantity: 1 }],
-    success_url:          `${base}/despacho-digital?success=true`,
+    success_url:          `${base}/gracias?tipo=despacho`,
     cancel_url:           `${base}/despacho-digital`,
     locale:               'es',
     metadata:             { type: 'package', package_slug: pkg.slug },
@@ -182,9 +232,40 @@ const create_package_checkout_session = async ({ package_slug }) => {
   return { url: session.url, session_id: session.id };
 };
 
+// Creates a manual Stripe Checkout Session (admin-issued payment link).
+const create_manual_checkout_session = async ({ client_id, label, amount, installment_number = null, installment_total = null }) => {
+  const base = process.env.FRONTEND_URL;
+
+  const session = await stripe.checkout.sessions.create({
+    mode:                 'payment',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency:     'eur',
+          product_data: { name: label },
+          unit_amount:  Math.round(amount * 100),
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: `${base}/gracias?tipo=manual`,
+    cancel_url:  `${base}/portal/dashboard`,
+    locale:      'es',
+    metadata: {
+      type:               'manual',
+      client_id:          String(client_id),
+      label,
+      installment_number: installment_number != null ? String(installment_number) : '',
+      installment_total:  installment_total  != null ? String(installment_total)  : '',
+    },
+  });
+
+  return { url: session.url, session_id: session.id };
+};
+
 // ── Webhook event router ────────────────────────────────────────────────────
 
-// Routes incoming Stripe webhook events to the correct handler.
 const handle_stripe_event = async (event) => {
   switch (event.type) {
     case 'checkout.session.completed':
@@ -199,7 +280,6 @@ const handle_stripe_event = async (event) => {
       await handle_invoice_succeeded(event.data.object);
       break;
 
-    // All other events: acknowledge without action
     default:
       break;
   }
@@ -207,22 +287,17 @@ const handle_stripe_event = async (event) => {
 
 // ── Private event handlers ──────────────────────────────────────────────────
 
-// Dispatches checkout.session.completed based on the session type in metadata.
 const handle_checkout_completed = async (session) => {
   const { type } = session.metadata ?? {};
 
-  if (type === 'course') {
-    await handle_course_checkout(session);
-  } else if (type === 'package') {
-    await handle_package_checkout(session);
-  } else if (type === 'bolsa') {
-    await handle_bolsa_checkout(session);
-  }
+  if (type === 'course')   await handle_course_checkout(session);
+  else if (type === 'package') await handle_package_checkout(session);
+  else if (type === 'bolsa')   await handle_bolsa_checkout(session);
+  else if (type === 'manual')  await handle_manual_checkout(session);
 };
 
-// One-time course payment — stores a payment record.
+// Course one-time payment
 const handle_course_checkout = async (session) => {
-  // Idempotency guard
   const existing = await Payment.findOne({ stripe_session_id: session.id });
   if (existing) return;
 
@@ -230,21 +305,29 @@ const handle_course_checkout = async (session) => {
   const full_name = session.customer_details?.name ?? email;
   const amount    = (session.amount_total ?? 0) / 100;
   const slug      = session.metadata?.course_slug ?? '';
+  const label     = session.metadata?.course_title ?? slug;
+
+  const client    = await ensure_account({ email, full_name, plan: 'course' });
+  const receipt_url = await get_receipt_url(session.payment_intent);
 
   await Payment.create({
-    payer_email:           email,
-    payer_name:            full_name,
-    stripe_session_id:     session.id,
+    client_id:                client?._id,
+    payer_email:              email,
+    payer_name:               full_name,
+    stripe_session_id:        session.id,
     stripe_payment_intent_id: session.payment_intent ?? undefined,
     amount,
-    currency:    (session.currency ?? 'eur').toUpperCase(),
-    description: `Curso: ${slug}`,
+    currency:         (session.currency ?? 'eur').toUpperCase(),
+    description:      `Curso: ${slug}`,
+    type:             'course',
+    reference_slug:   slug,
+    reference_label:  label,
+    receipt_url,
   });
 };
 
-// Bolsa de Empleo setup payment — stores a payment record.
+// Bolsa de Empleo setup payment
 const handle_bolsa_checkout = async (session) => {
-  // Idempotency guard
   const existing = await Payment.findOne({ stripe_session_id: session.id });
   if (existing) return;
 
@@ -252,23 +335,32 @@ const handle_bolsa_checkout = async (session) => {
   const full_name    = session.customer_details?.name ?? email;
   const amount       = (session.amount_total ?? 0) / 100;
   const ids          = session.metadata?.employee_ids ?? '';
+  const label        = session.metadata?.employee_label ?? ids;
   const installments = parseInt(session.metadata?.installments ?? '1', 10);
-  const setup_total  = session.metadata?.setup_total ?? '';
+  const inst_number  = parseInt(session.metadata?.installment_number ?? '1', 10);
 
-  const suffix = installments === 3 ? ` (1/3 de ${setup_total}€)` : '';
+  const client      = await ensure_account({ email, full_name, plan: 'bolsa' });
+  const receipt_url = await get_receipt_url(session.payment_intent);
 
   await Payment.create({
+    client_id:                client?._id,
     payer_email:              email,
     payer_name:               full_name,
     stripe_session_id:        session.id,
     stripe_payment_intent_id: session.payment_intent ?? undefined,
     amount,
-    currency:    (session.currency ?? 'eur').toUpperCase(),
-    description: `Bolsa de Empleo IA — ${ids}${suffix}`,
+    currency:          (session.currency ?? 'eur').toUpperCase(),
+    description:       `Bolsa de Empleo IA — ${label}`,
+    type:              'bolsa',
+    reference_slug:    'bolsa',
+    reference_label:   label,
+    receipt_url,
+    installment_number: installments > 1 ? inst_number  : null,
+    installment_total:  installments > 1 ? installments : null,
   });
 };
 
-// Package subscription — creates client account, user login, and subscription record.
+// Package subscription — creates account + subscription record
 const handle_package_checkout = async (session) => {
   const stripe_subscription_id = session.subscription;
   const stripe_customer_id     = session.customer;
@@ -278,49 +370,20 @@ const handle_package_checkout = async (session) => {
 
   if (!stripe_subscription_id || !email || !package_slug) return;
 
-  // Idempotency guard
   const existing = await PackageSubscription.findOne({ stripe_checkout_session_id: session.id });
   if (existing) return;
 
-  // Retrieve subscription to get exact billing dates
-  const subscription = await stripe.subscriptions.retrieve(stripe_subscription_id);
-  const started_at   = new Date(subscription.current_period_start * 1000);
+  const subscription  = await stripe.subscriptions.retrieve(stripe_subscription_id);
+  const started_at    = new Date(subscription.current_period_start * 1000);
+  const next_billing  = new Date(subscription.current_period_end   * 1000);
+  const amount_monthly = (subscription.items.data[0]?.price?.unit_amount ?? 0) / 100;
 
   const pkg = await Package.findOne({ slug: package_slug });
   const minimum_end_date = new Date(started_at);
   minimum_end_date.setMonth(minimum_end_date.getMonth() + (pkg?.minimum_months ?? 6));
 
-  // Create or update the client record
-  let client = await Client.findOne({ email });
+  const client = await ensure_account({ email, full_name, plan: 'despacho-digital' });
 
-  if (!client) {
-    client = await Client.create({
-      name:           full_name,
-      email,
-      plan:           'despacho-digital',
-      status:         'active',
-      setup_fee_paid: true,
-    });
-
-    const temp_password = generate_temp_password();
-    const password_hash = await User.hash_password(temp_password);
-
-    await User.create({
-      email,
-      password_hash,
-      role:      'client',
-      client_id: client._id,
-    });
-
-    await send_welcome_email(email, { name: full_name, temp_password });
-  } else {
-    await Client.findByIdAndUpdate(client._id, {
-      plan:   'despacho-digital',
-      status: 'active',
-    });
-  }
-
-  // Store subscription record
   await PackageSubscription.create({
     client_id:                  client._id,
     package_slug,
@@ -330,9 +393,19 @@ const handle_package_checkout = async (session) => {
     status:                     'active',
     started_at,
     minimum_end_date,
+    next_billing_date:          next_billing,
+    amount_monthly,
   });
 
-  // Record first month's payment
+  // Receipt from the subscription invoice
+  let receipt_url = null;
+  if (session.invoice) {
+    try {
+      const inv = await stripe.invoices.retrieve(session.invoice, { expand: ['charge'] });
+      receipt_url = inv.charge?.receipt_url ?? inv.hosted_invoice_url ?? null;
+    } catch { /* not critical */ }
+  }
+
   await Payment.create({
     client_id:         client._id,
     payer_email:       email,
@@ -341,10 +414,46 @@ const handle_package_checkout = async (session) => {
     amount:            (session.amount_total ?? 0) / 100,
     currency:          (session.currency ?? 'eur').toUpperCase(),
     description:       `Suscripción ${pkg?.name ?? package_slug} — primer mes`,
+    type:              'subscription',
+    reference_slug:    package_slug,
+    reference_label:   pkg?.name ?? package_slug,
+    receipt_url,
+    installment_number: null,
+    installment_total:  null,
   });
 };
 
-// Subscription cancelled in Stripe — suspends the client.
+// Admin-issued manual payment link
+const handle_manual_checkout = async (session) => {
+  const existing = await Payment.findOne({ stripe_session_id: session.id });
+  if (existing) return;
+
+  const client_id        = session.metadata?.client_id;
+  const label            = session.metadata?.label ?? 'Pago manual';
+  const inst_number_str  = session.metadata?.installment_number;
+  const inst_total_str   = session.metadata?.installment_total;
+  const amount           = (session.amount_total ?? 0) / 100;
+  const receipt_url      = await get_receipt_url(session.payment_intent);
+
+  await Payment.create({
+    client_id:                client_id ?? undefined,
+    payer_email:              session.customer_details?.email,
+    payer_name:               session.customer_details?.name,
+    stripe_session_id:        session.id,
+    stripe_payment_intent_id: session.payment_intent ?? undefined,
+    amount,
+    currency:          (session.currency ?? 'eur').toUpperCase(),
+    description:       label,
+    type:              'manual',
+    reference_slug:    'manual',
+    reference_label:   label,
+    receipt_url,
+    installment_number: inst_number_str ? parseInt(inst_number_str, 10) : null,
+    installment_total:  inst_total_str  ? parseInt(inst_total_str,  10) : null,
+  });
+};
+
+// Subscription cancelled in Stripe
 const handle_subscription_deleted = async (subscription) => {
   const sub = await PackageSubscription.findOneAndUpdate(
     { stripe_subscription_id: subscription.id },
@@ -353,42 +462,56 @@ const handle_subscription_deleted = async (subscription) => {
   );
   if (!sub) return;
 
-  const client = await Client.findByIdAndUpdate(
-    sub.client_id,
-    { status: 'suspended' },
-    { new: true }
-  );
-
-  if (client) {
-    await send_suspension_email(client.email, { name: client.name });
-  }
+  const client = await Client.findByIdAndUpdate(sub.client_id, { status: 'suspended' }, { new: true });
+  if (client) await send_suspension_email(client.email, { name: client.name });
 };
 
-// Renewal invoice paid — records the payment, reactivates suspended clients.
+// Renewal invoice paid — records the payment, updates next billing date, reactivates if suspended
 const handle_invoice_succeeded = async (invoice) => {
-  // Skip the creation invoice (already handled by checkout.session.completed)
   if (!invoice.subscription || invoice.billing_reason === 'subscription_create') return;
 
-  const sub = await PackageSubscription.findOne({
-    stripe_subscription_id: invoice.subscription,
-  });
+  const sub = await PackageSubscription.findOne({ stripe_subscription_id: invoice.subscription });
   if (!sub) return;
+
+  // Update next billing date from Stripe's period_end
+  const next_billing_date = invoice.period_end
+    ? new Date(invoice.period_end * 1000)
+    : null;
+
+  await PackageSubscription.findByIdAndUpdate(sub._id, {
+    ...(next_billing_date && { next_billing_date }),
+    status: 'active',
+  });
 
   await Client.findOneAndUpdate(
     { _id: sub.client_id, status: 'suspended' },
     { status: 'active' }
   );
 
+  // Receipt from invoice charge
+  let receipt_url = null;
+  try {
+    const full_invoice = await stripe.invoices.retrieve(invoice.id, { expand: ['charge'] });
+    receipt_url = full_invoice.charge?.receipt_url ?? full_invoice.hosted_invoice_url ?? null;
+  } catch { /* not critical */ }
+
   await Payment.create({
-    client_id:   sub.client_id,
-    amount:      (invoice.amount_paid ?? 0) / 100,
-    currency:    (invoice.currency ?? 'eur').toUpperCase(),
-    description: `Renovación ${sub.package_slug}`,
+    client_id:    sub.client_id,
+    amount:       (invoice.amount_paid ?? 0) / 100,
+    currency:     (invoice.currency ?? 'eur').toUpperCase(),
+    description:  `Renovación ${sub.package_slug}`,
+    type:         'subscription',
+    reference_slug:  sub.package_slug,
+    reference_label: sub.package_slug,
+    receipt_url,
   });
 };
 
-const generate_temp_password = () => {
-  return Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-4).toUpperCase();
+export {
+  create_course_checkout_session,
+  create_package_checkout_session,
+  create_despacho_checkout_session,
+  create_bolsa_checkout_session,
+  create_manual_checkout_session,
+  handle_stripe_event,
 };
-
-export { create_course_checkout_session, create_package_checkout_session, create_despacho_checkout_session, create_bolsa_checkout_session, handle_stripe_event };

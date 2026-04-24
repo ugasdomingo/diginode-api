@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-// Stores completed Stripe payments (one-time courses and subscription renewals)
+// Stores completed Stripe payments (one-time purchases and subscription renewals)
 const payment_schema = new mongoose.Schema(
   {
     client_id: {
@@ -34,8 +34,39 @@ const payment_schema = new mongoose.Schema(
       type: String,
       default: 'EUR',
     },
+    // Human-readable fallback (kept for legacy records)
     description: {
       type: String,
+    },
+
+    // ── Structured fields (new) ──────────────────────────────────────────────
+    // What kind of purchase this is
+    type: {
+      type: String,
+      enum: ['course', 'bolsa', 'subscription', 'manual'],
+    },
+    // Slug of the related entity (course slug, 'bolsa', package slug, or custom label)
+    reference_slug: {
+      type: String,
+      trim: true,
+    },
+    // Display name shown in the portal ("Máster en IA Clínica", "Sofía + Marcos", …)
+    reference_label: {
+      type: String,
+      trim: true,
+    },
+    // Stripe hosted receipt URL — set when the PaymentIntent charge is available
+    receipt_url: {
+      type: String,
+    },
+    // For split payments: which installment this is and how many total (null = single payment)
+    installment_number: {
+      type: Number,
+      default: null,
+    },
+    installment_total: {
+      type: Number,
+      default: null,
     },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
