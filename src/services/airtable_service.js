@@ -5,7 +5,7 @@ const BASE_ID   = 'appg3sqgom3NIQuYy';
 const TABLE_FAQS  = 'tblmmLyELanbMryr0';
 const TABLE_CONV  = 'tbl03ciTr2AIYO1KK';
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(BASE_ID);
+const base = new Airtable({ apiKey: process.env.AIRTABLE_PAT }).base(BASE_ID);
 
 // ── FAQ cache (TTL 10 min) ──────────────────────────────────────────────────
 let faq_cache     = null;
