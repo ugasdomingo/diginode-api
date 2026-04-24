@@ -1,6 +1,13 @@
 import { Router } from 'express';
 import { authenticate, require_role } from '../middleware/auth_middleware.js';
 import {
+  get_conversations,
+  get_conversation_detail,
+  patch_conversation,
+  send_human_reply,
+  refresh_faqs,
+} from '../controllers/conversations_controller.js';
+import {
   get_dashboard,
   get_leads,
   update_lead,
@@ -68,5 +75,12 @@ router.delete('/packages/:package_id', delete_package);
 router.get('/clients',             get_admin_clients);
 router.get('/clients/:client_id',  get_admin_client_detail);
 router.post('/payment-links',      create_payment_link);
+
+// ── Conversations (Instagram agent) ──────────────────────────────────────────
+router.get('/conversations',                        get_conversations);
+router.get('/conversations/:record_id',             get_conversation_detail);
+router.patch('/conversations/:record_id',           patch_conversation);
+router.post('/conversations/:record_id/reply',      send_human_reply);
+router.post('/faqs/refresh',                        refresh_faqs);
 
 export default router;

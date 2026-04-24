@@ -1,6 +1,7 @@
 import { handle_meeting_booked } from '../services/crm_service.js';
 import { handle_stripe_event } from '../services/stripe_service.js';
 import { add_to_buffer } from '../services/message_buffer_service.js';
+import { handle_instagram_dm, handle_instagram_comment } from '../services/instagram_agent_service.js';
 import Campaign from '../models/campaign_model.js';
 import Knowledge from '../models/knowledge_model.js';
 import Lead from '../models/lead_model.js';
@@ -135,19 +136,37 @@ const verify_instagram = (req, res) => {
   res.sendStatus(403);
 };
 
-// POST /api/webhooks/meta/instagram  — Incoming Instagram DMs
+// POST /api/webhooks/meta/instagram  — Incoming Instagram DMs and comments
 const handle_instagram = (req, res) => {
+  // Acknowledge immediately — Meta requires < 200ms response
   res.sendStatus(200);
-  const entry     = req.body?.entry?.[0];
-  const messaging = entry?.messaging?.[0];
-  if (!messaging?.message?.text) return;
 
-  add_to_buffer({
-    contact_id:  messaging.sender.id,
-    platform:    'instagram',
-    message:     messaging.message.text,
-    sender_name: null,
-  });
+  const entry = req.body?.entry?.[0];
+  if (!entry) return;
+
+  // ── DM ──────────────────────────────────────────────────────────────────
+  const messaging = entry.messaging?.[0];
+  if (messaging?.message?.text && !messaging.message.is_echo) {
+    handle_instagram_dm({
+      sender_id:   messaging.sender.id,
+      sender_name: null,
+      text:        messaging.message.text,
+    }).catch(err => console.error('[instagram_agent DM]', err.message));
+    return;
+  }
+
+  // ── Comment ──────────────────────────────────────────────────────────────
+  const change = entry.changes?.[0];
+  if (change?.field === 'comments' && change.value?.text) {
+    const v = change.value;
+    handle_instagram_comment({
+      commenter_id:   v.from?.id,
+      commenter_name: v.from?.name ?? null,
+      comment_id:     v.id,
+      text:           v.text,
+      post_id:        v.media?.id ?? null,
+    }).catch(err => console.error('[instagram_agent comment]', err.message));
+  }
 };
 
 // ── Make reply ────────────────────────────────────────────────────────────────
