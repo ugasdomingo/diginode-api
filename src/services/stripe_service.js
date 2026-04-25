@@ -13,7 +13,7 @@ const BOLSA_NAMES = {
 };
 const BOLSA_VALID_IDS   = Object.keys(BOLSA_NAMES);
 const BOLSA_ALL_IDS     = BOLSA_VALID_IDS;
-const BOLSA_INDIVIDUAL  = { setup: 450 };
+const BOLSA_INDIVIDUAL  = { setup: 600 };
 const BOLSA_DEPARTMENTS = [
   { members: ['sofia', 'marcos'], setup: 750 },
   { members: ['luna', 'valeria'], setup: 750 },
@@ -197,6 +197,32 @@ const create_bolsa_checkout_session = async ({ employee_ids, installments = 1 })
       installment_number: '1',
       setup_total:       String(setup_total),
     },
+  });
+
+  return { url: session.url, session_id: session.id };
+};
+
+const create_clinica_checkout_session = async () => {
+  const base = process.env.FRONTEND_URL;
+
+  const session = await stripe.checkout.sessions.create({
+    mode:                 'subscription',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency:     'eur',
+          product_data: { name: 'Clínica Digital — 4 Empleados IA + Panel de control' },
+          unit_amount:  50000,
+          recurring:    { interval: 'month' },
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: `${base}/gracias?tipo=despacho`,
+    cancel_url:  `${base}/bolsa-de-empleo`,
+    locale:      'es',
+    metadata:    { type: 'package', package_slug: 'clinica-digital' },
   });
 
   return { url: session.url, session_id: session.id };
@@ -511,6 +537,7 @@ export {
   create_course_checkout_session,
   create_package_checkout_session,
   create_despacho_checkout_session,
+  create_clinica_checkout_session,
   create_bolsa_checkout_session,
   create_manual_checkout_session,
   handle_stripe_event,
