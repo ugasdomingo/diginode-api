@@ -34,6 +34,9 @@ import {
   get_admin_clients,
   get_admin_client_detail,
   create_payment_link,
+  get_client_config,
+  update_client_config,
+  setup_client_telegram_webhook,
 } from '../controllers/admin_controller.js';
 
 const router = Router();
@@ -75,6 +78,11 @@ router.delete('/packages/:package_id', delete_package);
 router.get('/clients',             get_admin_clients);
 router.get('/clients/:client_id',  get_admin_client_detail);
 router.post('/payment-links',      create_payment_link);
+
+// ── AI employee configuration (per-client) ────────────────────────────────────
+router.get('/clients/:client_id/config',                    get_client_config);
+router.patch('/clients/:client_id/config',                  update_client_config);
+router.post('/clients/:client_id/config/telegram-webhook',  setup_client_telegram_webhook);
 
 // ── Conversations (Instagram agent) ──────────────────────────────────────────
 router.get('/conversations',                        get_conversations);

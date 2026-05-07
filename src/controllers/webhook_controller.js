@@ -2,6 +2,7 @@ import { handle_meeting_booked } from '../services/crm_service.js';
 import { handle_stripe_event } from '../services/stripe_service.js';
 import { add_to_buffer } from '../services/message_buffer_service.js';
 import { handle_instagram_dm, handle_instagram_comment } from '../services/instagram_agent_service.js';
+import { handle_whatsapp_inbound } from '../employees/recepcionista/channels/whatsapp_handler.js';
 import Campaign from '../models/campaign_model.js';
 import Knowledge from '../models/knowledge_model.js';
 import Lead from '../models/lead_model.js';
@@ -114,9 +115,17 @@ const verify_whatsapp = (req, res) => {
 // POST /api/webhooks/meta/whatsapp  — Incoming WhatsApp messages
 const handle_whatsapp = (req, res) => {
   res.sendStatus(200);
-  const entry   = req.body?.entry?.[0];
-  const change  = entry?.changes?.[0]?.value;
-  const msg     = change?.messages?.[0];
+
+  // New path: AI-plan clients routed to Recepcionista by phone_number_id.
+  // Short-circuits internally if no ClientConfig found for this number.
+  handle_whatsapp_inbound(req.body);
+
+  // Legacy path: non-AI clients forwarded to Make.com via buffer.
+  // Messages for AI clients land here too but Make.com has no record of their
+  // phone_number_id, so no duplicate reply is sent.
+  const entry  = req.body?.entry?.[0];
+  const change = entry?.changes?.[0]?.value;
+  const msg    = change?.messages?.[0];
   if (!msg || msg.type !== 'text') return;
 
   add_to_buffer({

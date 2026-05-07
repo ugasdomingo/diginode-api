@@ -6,11 +6,19 @@ import {
   handle_make_reply, get_knowledge,
   handle_content_ready, handle_cal, handle_stripe,
 } from '../controllers/webhook_controller.js';
+import { handle_telegram_inbound } from '../employees/recepcionista/channels/telegram_handler.js';
+import { handle_asistente_telegram } from '../employees/asistente/channels/telegram_handler.js';
 import verify_make_middleware from '../middleware/verify_make_middleware.js';
 import verify_cal_middleware from '../middleware/verify_cal_middleware.js';
 import verify_stripe_middleware from '../middleware/verify_stripe_middleware.js';
 
 const router = Router();
+
+// ── Telegram (per-client bot webhooks) ───────────────────────────────────────
+// Each employee has its own bot. client_id scopes to the correct tenant.
+// Secret validated inside each handler via x-telegram-bot-api-secret-token.
+router.post('/telegram/:client_id',           handle_telegram_inbound);   // Recepcionista
+router.post('/asistente/telegram/:client_id', handle_asistente_telegram); // Asistente Ejecutivo
 
 // ── Meta direct webhooks ──────────────────────────────────────────────────────
 router.get('/meta/whatsapp',  verify_whatsapp);

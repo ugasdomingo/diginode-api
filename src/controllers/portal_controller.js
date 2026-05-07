@@ -2,6 +2,9 @@ import Client from '../models/client_model.js';
 import SupportTicket from '../models/support_ticket_model.js';
 import { get_client_billing } from '../services/billing_service.js';
 import { analyze_ticket } from '../services/ingeniero_service.js';
+import { AI_PLANS, EMPLOYEE_NAMES } from '../services/stripe_service.js';
+
+const AI_PLAN_SLUGS = new Set(['individual', 'estudio', 'clinica']);
 
 // ─── GET /api/portal/me ────────────────────────────────────────────────────
 // Single endpoint that returns everything the portal dashboard needs.
@@ -11,7 +14,7 @@ const get_portal_me = async (req, res, next) => {
     const client_id = req.user.client_id;
 
     const [client, { payments, subscription }, open_tickets] = await Promise.all([
-      Client.findById(client_id).select('name email plan status company country created_at'),
+      Client.findById(client_id).select('name email plan status company country created_at active_employees onboarding_status'),
       get_client_billing(client_id),
       SupportTicket.countDocuments({ client_id, status: { $in: ['open', 'in_progress'] } }),
     ]);
@@ -77,13 +80,15 @@ const get_portal_me = async (req, res, next) => {
       success: true,
       data: {
         client: {
-          name:       client.name,
-          email:      client.email,
-          plan:       client.plan,
-          status:     client.status,
-          company:    client.company ?? null,
-          country:    client.country ?? null,
-          member_since: client.created_at,
+          name:              client.name,
+          email:             client.email,
+          plan:              client.plan,
+          status:            client.status,
+          company:           client.company ?? null,
+          country:           client.country ?? null,
+          member_since:      client.created_at,
+          active_employees:  client.active_employees ?? [],
+          onboarding_status: client.onboarding_status ?? null,
         },
         purchases,
         subscription: subscription
@@ -140,4 +145,45 @@ const create_support_ticket = async (req, res, next) => {
   }
 };
 
-export { get_portal_me, get_portal_tickets, create_support_ticket };
+// ─── GET /api/portal/plan ──────────────────────────────────────────────────
+// Returns the client's active AI plan, contracted employees and onboarding status.
+// Only meaningful for clients on an AI plan (individual / estudio / clinica).
+const get_portal_plan = async (req, res, next) => {
+  try {
+    const client = await Client.findById(req.user.client_id).select(
+      'plan active_employees onboarding_status setup_fee_paid status'
+    );
+
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+
+    const is_ai_plan = AI_PLAN_SLUGS.has(client.plan);
+
+    const plan_config = is_ai_plan ? AI_PLANS[client.plan] : null;
+
+    const employees = (client.active_employees ?? []).map(slug => ({
+      slug,
+      name:   EMPLOYEE_NAMES[slug] ?? slug,
+      active: client.status === 'active',
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        plan:               client.plan,
+        plan_name:          plan_config?.name ?? client.plan,
+        monthly_amount:     plan_config?.monthly ?? null,
+        is_ai_plan,
+        onboarding_status:  client.onboarding_status ?? null,
+        setup_fee_paid:     client.setup_fee_paid,
+        status:             client.status,
+        employees,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export { get_portal_me, get_portal_tickets, create_support_ticket, get_portal_plan };

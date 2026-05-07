@@ -9,9 +9,11 @@ import BlogPost from '../models/blog_post_model.js';
 import Course from '../models/course_model.js';
 import CourseWaitlist from '../models/course_waitlist_model.js';
 import Package from '../models/package_model.js';
+import ClientConfig from '../models/client_config_model.js';
 import { analyze_meeting } from '../services/ingeniero_service.js';
 import { convert_lead_to_client } from '../services/crm_service.js';
 import { create_manual_checkout_session } from '../services/stripe_service.js';
+import { set_webhook } from '../services/telegram_service.js';
 
 // GET /api/admin/dashboard
 const get_dashboard = async (_req, res, next) => {
@@ -517,6 +519,88 @@ const create_payment_link = async (req, res, next) => {
   }
 };
 
+// ── ClientConfig management (AI employees) ────────────────────────────────────
+
+// GET /api/admin/clients/:client_id/config
+// Returns the full ClientConfig, masking sensitive credential fields.
+const get_client_config = async (req, res, next) => {
+  try {
+    const { client_id } = req.params;
+    const config = await ClientConfig.findOne({ client_id })
+      .select('-google_oauth.access_token -whatsapp_access_token -telegram_bot_token -telegram_secret -asistente_telegram_bot_token -asistente_telegram_secret');
+
+    res.json({ success: true, data: config ?? null });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /api/admin/clients/:client_id/config
+// Creates or updates any ClientConfig field. Admins can set everything including credentials.
+const update_client_config = async (req, res, next) => {
+  try {
+    const { client_id } = req.params;
+
+    const config = await ClientConfig.findOneAndUpdate(
+      { client_id },
+      { $set: req.body },
+      { upsert: true, new: true, runValidators: true }
+    );
+
+    res.json({ success: true, data: config });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/admin/clients/:client_id/config/telegram-webhook
+// Registers a Telegram webhook for a client's bot (admin-initiated during setup).
+// Body: { bot_token, bot_username?, employee: 'recepcionista' | 'asistente' }
+const setup_client_telegram_webhook = async (req, res, next) => {
+  try {
+    const { client_id } = req.params;
+    const { bot_token, bot_username, employee = 'recepcionista' } = req.body;
+
+    if (!bot_token) {
+      return res.status(400).json({ success: false, message: 'bot_token es obligatorio' });
+    }
+
+    const base_url = process.env.API_BASE_URL ?? `https://${req.hostname}`;
+    const secret   = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+    const webhook_url = employee === 'asistente'
+      ? `${base_url}/api/webhooks/asistente/telegram/${client_id}`
+      : `${base_url}/api/webhooks/telegram/${client_id}`;
+
+    await set_webhook(bot_token, webhook_url, secret);
+
+    const update_fields = employee === 'asistente'
+      ? {
+          asistente_telegram_bot_token:    bot_token,
+          asistente_telegram_bot_username: bot_username ?? null,
+          asistente_telegram_secret:       secret,
+        }
+      : {
+          telegram_bot_token:    bot_token,
+          telegram_bot_username: bot_username ?? null,
+          telegram_secret:       secret,
+        };
+
+    await ClientConfig.findOneAndUpdate(
+      { client_id },
+      { $set: update_fields },
+      { upsert: true, new: true }
+    );
+
+    res.json({
+      success: true,
+      data: { employee, webhook_url, message: 'Webhook de Telegram registrado correctamente.' },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export {
   get_dashboard,
   get_leads,
@@ -544,4 +628,7 @@ export {
   get_admin_clients,
   get_admin_client_detail,
   create_payment_link,
+  get_client_config,
+  update_client_config,
+  setup_client_telegram_webhook,
 };

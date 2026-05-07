@@ -1,10 +1,25 @@
 import Stripe from 'stripe';
-import Client from '../models/client_model.js';
+import Client, { PLAN_EMPLOYEES } from '../models/client_model.js';
 import User from '../models/user_model.js';
 import Package from '../models/package_model.js';
 import PackageSubscription from '../models/package_subscription_model.js';
 import Payment from '../models/payment_model.js';
 import { send_welcome_email, send_suspension_email } from './email_service.js';
+
+// ── Empleados AI pricing ────────────────────────────────────────────────────
+const AI_PLANS = {
+  individual: { monthly: 180, setup: 200, name: 'Empleado Individual' },
+  estudio:    { monthly: 300, setup: 350, name: 'Estudio' },
+  clinica:    { monthly: 500, setup: 550, name: 'Clínica' },
+};
+
+// Employee display names for receipts / emails
+const EMPLOYEE_NAMES = {
+  recepcionista:    'Recepcionista',
+  asistente:        'Asistente Ejecutivo',
+  'gestor-relaciones': 'Gestor de Relaciones',
+  'content-manager':   'Content Manager',
+};
 
 // ── Bolsa de Empleo pricing (mirrors frontend constants) ────────────────────
 const BOLSA_NAMES = {
@@ -228,6 +243,84 @@ const create_clinica_checkout_session = async () => {
   return { url: session.url, session_id: session.id };
 };
 
+// ── AI Employee Plan checkout sessions ─────────────────────────────────────
+
+// Creates a two-item checkout: setup fee (one-time) + monthly subscription.
+// For 'individual' plan, caller passes the chosen employee_id.
+const create_ai_plan_checkout_session = async ({ plan, employee_id = null }) => {
+  const config = AI_PLANS[plan];
+  if (!config) {
+    const err = new Error('Plan no válido');
+    err.status_code = 400;
+    throw err;
+  }
+
+  // For individual plan, employee_id is required
+  if (plan === 'individual' && !employee_id) {
+    const err = new Error('Debes seleccionar un empleado para el plan Individual');
+    err.status_code = 400;
+    throw err;
+  }
+
+  const employee_ids = plan === 'individual'
+    ? [employee_id]
+    : PLAN_EMPLOYEES[plan];
+
+  const employee_label = employee_ids
+    .map(id => EMPLOYEE_NAMES[id] ?? id)
+    .join(', ');
+
+  const base = process.env.FRONTEND_URL;
+
+  const session = await stripe.checkout.sessions.create({
+    mode:                 'subscription',
+    payment_method_types: ['card'],
+    line_items: [
+      // Setup fee — one-time charge added to the first invoice
+      {
+        price_data: {
+          currency:     'eur',
+          product_data: { name: `Setup — ${config.name} (${employee_label})` },
+          unit_amount:  config.setup * 100,
+          recurring:    { interval: 'month', interval_count: 1 },
+        },
+        quantity: 1,
+      },
+      // Monthly subscription
+      {
+        price_data: {
+          currency:     'eur',
+          product_data: { name: `${config.name} — ${employee_label}` },
+          unit_amount:  config.monthly * 100,
+          recurring:    { interval: 'month' },
+        },
+        quantity: 1,
+      },
+    ],
+    subscription_data: {
+      // Remove the setup item after the first billing cycle
+      trial_settings: undefined,
+      metadata: {
+        plan,
+        employee_ids: employee_ids.join(','),
+      },
+    },
+    success_url: `${base}/gracias?tipo=empleado&plan=${plan}`,
+    cancel_url:  `${base}/planes`,
+    locale:      'es',
+    metadata: {
+      type:         'ai_plan',
+      plan,
+      employee_ids: employee_ids.join(','),
+      employee_label,
+      setup_amount: String(config.setup),
+      monthly_amount: String(config.monthly),
+    },
+  });
+
+  return { url: session.url, session_id: session.id };
+};
+
 const create_package_checkout_session = async ({ package_slug }) => {
   const pkg = await Package.findOne({ slug: package_slug, active: true });
 
@@ -316,10 +409,11 @@ const handle_stripe_event = async (event) => {
 const handle_checkout_completed = async (session) => {
   const { type } = session.metadata ?? {};
 
-  if (type === 'course')   await handle_course_checkout(session);
-  else if (type === 'package') await handle_package_checkout(session);
-  else if (type === 'bolsa')   await handle_bolsa_checkout(session);
-  else if (type === 'manual')  await handle_manual_checkout(session);
+  if (type === 'course')    await handle_course_checkout(session);
+  else if (type === 'package')  await handle_package_checkout(session);
+  else if (type === 'bolsa')    await handle_bolsa_checkout(session);
+  else if (type === 'manual')   await handle_manual_checkout(session);
+  else if (type === 'ai_plan')  await handle_ai_plan_checkout(session);
 };
 
 // Course one-time payment
@@ -479,6 +573,71 @@ const handle_manual_checkout = async (session) => {
   });
 };
 
+// AI Employee Plan — creates account, sets active employees, marks setup paid
+const handle_ai_plan_checkout = async (session) => {
+  const existing = await PackageSubscription.findOne({ stripe_checkout_session_id: session.id });
+  if (existing) return;
+
+  const stripe_subscription_id = session.subscription;
+  const stripe_customer_id     = session.customer;
+  const email                  = session.customer_details?.email;
+  const full_name              = session.customer_details?.name ?? email;
+  const plan                   = session.metadata?.plan;
+  const employee_ids           = (session.metadata?.employee_ids ?? '').split(',').filter(Boolean);
+  const employee_label         = session.metadata?.employee_label ?? '';
+  const monthly_amount         = parseFloat(session.metadata?.monthly_amount ?? '0');
+
+  if (!stripe_subscription_id || !email || !plan) return;
+
+  const subscription  = await stripe.subscriptions.retrieve(stripe_subscription_id);
+  const started_at    = new Date(subscription.current_period_start * 1000);
+  const next_billing  = new Date(subscription.current_period_end   * 1000);
+
+  const client = await ensure_account({ email, full_name, plan });
+
+  // Activate the contracted employees and mark onboarding as started
+  await Client.findByIdAndUpdate(client._id, {
+    active_employees:   employee_ids,
+    setup_fee_paid:     true,
+    onboarding_status:  'pending_form',
+    status:             'active',
+  });
+
+  await PackageSubscription.create({
+    client_id:                  client._id,
+    package_slug:               `empleado-${plan}`,
+    stripe_subscription_id,
+    stripe_customer_id,
+    stripe_checkout_session_id: session.id,
+    status:                     'active',
+    started_at,
+    next_billing_date:          next_billing,
+    amount_monthly:             monthly_amount,
+  });
+
+  let receipt_url = null;
+  if (session.invoice) {
+    try {
+      const inv = await stripe.invoices.retrieve(session.invoice, { expand: ['charge'] });
+      receipt_url = inv.charge?.receipt_url ?? inv.hosted_invoice_url ?? null;
+    } catch { /* not critical */ }
+  }
+
+  await Payment.create({
+    client_id:         client._id,
+    payer_email:       email,
+    payer_name:        full_name,
+    stripe_session_id: session.id,
+    amount:            (session.amount_total ?? 0) / 100,
+    currency:          (session.currency ?? 'eur').toUpperCase(),
+    description:       `Plan ${plan} — ${employee_label} (setup + primer mes)`,
+    type:              'subscription',
+    reference_slug:    `empleado-${plan}`,
+    reference_label:   `Plan ${AI_PLANS[plan]?.name ?? plan}`,
+    receipt_url,
+  });
+};
+
 // Subscription cancelled in Stripe
 const handle_subscription_deleted = async (subscription) => {
   const sub = await PackageSubscription.findOneAndUpdate(
@@ -540,5 +699,8 @@ export {
   create_clinica_checkout_session,
   create_bolsa_checkout_session,
   create_manual_checkout_session,
+  create_ai_plan_checkout_session,
   handle_stripe_event,
+  AI_PLANS,
+  EMPLOYEE_NAMES,
 };
