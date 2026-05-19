@@ -58,6 +58,27 @@ const client_schema = new mongoose.Schema(
       enum: ['pending_form', 'configuring', 'testing', 'live'],
       default: 'pending_form',
     },
+    office_url: {
+      type: String,
+      trim: true,
+    },
+    office_status: {
+      type: String,
+      enum: ['not_requested', 'requested', 'provisioning', 'training', 'review', 'live', 'paused', 'error'],
+      default: 'not_requested',
+    },
+    office_plan: {
+      type: String,
+      enum: ['individual', 'operativo', 'full'],
+    },
+    office_instance_id: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    office_deployed_at: {
+      type: Date,
+    },
     // Telegram chat IDs for direct client ↔ employee communication
     // Key: employee slug, Value: Telegram chat_id
     telegram_chat_ids: {

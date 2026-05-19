@@ -18,16 +18,17 @@ import { set_webhook } from '../services/telegram_service.js';
 // GET /api/admin/dashboard
 const get_dashboard = async (_req, res, next) => {
   try {
-    const [total_leads, total_clients, open_tickets, content_drafts] = await Promise.all([
+    const [total_leads, total_clients, open_tickets, content_drafts, live_offices] = await Promise.all([
       Lead.countDocuments(),
       Client.countDocuments({ status: 'active' }),
       SupportTicket.countDocuments({ status: { $in: ['open', 'pending_review'] } }),
       Campaign.countDocuments({ status: 'pending' }),
+      Client.countDocuments({ office_status: 'live' }),
     ]);
 
     res.json({
       success: true,
-      data: { total_leads, total_clients, open_tickets, content_drafts },
+      data: { total_leads, total_clients, open_tickets, content_drafts, live_offices },
     });
   } catch (err) {
     next(err);
@@ -489,6 +490,36 @@ const get_admin_client_detail = async (req, res, next) => {
   }
 };
 
+// PATCH /api/admin/clients/:client_id/office
+// Updates only commercial metadata for the isolated office instance.
+const update_client_office = async (req, res, next) => {
+  try {
+    const { client_id } = req.params;
+    const allowed = ['office_url', 'office_status', 'office_plan', 'office_instance_id', 'office_deployed_at'];
+    const update = {};
+
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) update[key] = req.body[key] === '' ? null : req.body[key];
+    }
+
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ success: false, message: 'No office fields provided' });
+    }
+
+    const client = await Client.findByIdAndUpdate(
+      client_id,
+      { $set: update },
+      { new: true, runValidators: true }
+    );
+
+    if (!client) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
+
+    res.json({ success: true, data: client });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // POST /api/admin/payment-links
 // Generates a Stripe Checkout link to charge a client for anything (installments, extras, etc.)
 const create_payment_link = async (req, res, next) => {
@@ -627,6 +658,7 @@ export {
   delete_package,
   get_admin_clients,
   get_admin_client_detail,
+  update_client_office,
   create_payment_link,
   get_client_config,
   update_client_config,

@@ -14,7 +14,9 @@ const get_portal_me = async (req, res, next) => {
     const client_id = req.user.client_id;
 
     const [client, { payments, subscription }, open_tickets] = await Promise.all([
-      Client.findById(client_id).select('name email plan status company country created_at active_employees onboarding_status'),
+      Client.findById(client_id).select(
+        'name email plan status company country created_at active_employees onboarding_status office_url office_status office_plan office_instance_id office_deployed_at'
+      ),
       get_client_billing(client_id),
       SupportTicket.countDocuments({ client_id, status: { $in: ['open', 'in_progress'] } }),
     ]);
@@ -89,6 +91,13 @@ const get_portal_me = async (req, res, next) => {
           member_since:      client.created_at,
           active_employees:  client.active_employees ?? [],
           onboarding_status: client.onboarding_status ?? null,
+          office: {
+            url:         client.office_url ?? null,
+            status:      client.office_status ?? 'not_requested',
+            plan:        client.office_plan ?? null,
+            instance_id: client.office_instance_id ?? null,
+            deployed_at: client.office_deployed_at ?? null,
+          },
         },
         purchases,
         subscription: subscription
@@ -151,7 +160,7 @@ const create_support_ticket = async (req, res, next) => {
 const get_portal_plan = async (req, res, next) => {
   try {
     const client = await Client.findById(req.user.client_id).select(
-      'plan active_employees onboarding_status setup_fee_paid status'
+      'plan active_employees onboarding_status setup_fee_paid status office_url office_status office_plan office_instance_id office_deployed_at'
     );
 
     if (!client) {
@@ -178,6 +187,13 @@ const get_portal_plan = async (req, res, next) => {
         onboarding_status:  client.onboarding_status ?? null,
         setup_fee_paid:     client.setup_fee_paid,
         status:             client.status,
+        office: {
+          url:         client.office_url ?? null,
+          status:      client.office_status ?? 'not_requested',
+          plan:        client.office_plan ?? null,
+          instance_id: client.office_instance_id ?? null,
+          deployed_at: client.office_deployed_at ?? null,
+        },
         employees,
       },
     });
