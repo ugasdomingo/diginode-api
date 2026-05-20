@@ -15,10 +15,10 @@ const AI_PLANS = {
 
 // Employee display names for receipts / emails
 const EMPLOYEE_NAMES = {
-  recepcionista:    'Recepcionista',
-  asistente:        'Asistente Ejecutivo',
-  'gestor-relaciones': 'Gestor de Relaciones',
-  'content-manager':   'Content Manager',
+  recepcionista:    'Nora',
+  asistente:        'Alex',
+  'gestor-relaciones': 'Marcos',
+  'content-manager':   'Valeria',
 };
 
 // ── Bolsa de Empleo pricing (mirrors frontend constants) ────────────────────
@@ -35,6 +35,30 @@ const BOLSA_DEPARTMENTS = [
   { members: ['elena', 'maya'],   setup: 750 },
 ];
 const BOLSA_FULL_TEAM = { setup: 1950 };
+
+const BOLSA_TO_COMMERCIAL_EMPLOYEE = {
+  luna: 'recepcionista',
+  sofia: 'asistente',
+  valeria: 'content-manager',
+  marcos: 'gestor-relaciones',
+};
+
+const OFFICE_PACKAGE_CONFIG = {
+  'despacho-digital': {
+    plan: 'operativo',
+    employees: ['recepcionista', 'asistente'],
+  },
+  'clinica-digital': {
+    plan: 'full',
+    employees: ['recepcionista', 'asistente', 'content-manager', 'gestor-relaciones'],
+  },
+};
+
+const office_plan_for_employee_count = (count) => {
+  if (count >= 4) return 'full';
+  if (count >= 2) return 'operativo';
+  return 'individual';
+};
 
 // Returns the setup fee for a given selection (same logic as frontend)
 const calculate_bolsa_setup = (ids) => {
@@ -461,6 +485,20 @@ const handle_bolsa_checkout = async (session) => {
 
   const client      = await ensure_account({ email, full_name, plan: 'bolsa' });
   const receipt_url = await get_receipt_url(session.payment_intent);
+  const active_employees = ids
+    .map(id => BOLSA_TO_COMMERCIAL_EMPLOYEE[id])
+    .filter(Boolean);
+
+  if (client) {
+    await Client.findByIdAndUpdate(client._id, {
+      active_employees,
+      setup_fee_paid: true,
+      onboarding_status: 'pending_form',
+      office_status: 'requested',
+      office_plan: office_plan_for_employee_count(active_employees.length),
+      status: 'active',
+    });
+  }
 
   await Payment.create({
     client_id:                client?._id,
@@ -503,6 +541,18 @@ const handle_package_checkout = async (session) => {
   minimum_end_date.setMonth(minimum_end_date.getMonth() + (pkg?.minimum_months ?? 6));
 
   const client = await ensure_account({ email, full_name, plan: 'despacho-digital' });
+  const office_config = OFFICE_PACKAGE_CONFIG[package_slug];
+
+  if (office_config) {
+    await Client.findByIdAndUpdate(client._id, {
+      active_employees: office_config.employees,
+      setup_fee_paid: true,
+      onboarding_status: 'pending_form',
+      office_status: 'requested',
+      office_plan: office_config.plan,
+      status: 'active',
+    });
+  }
 
   await PackageSubscription.create({
     client_id:                  client._id,
@@ -600,6 +650,8 @@ const handle_ai_plan_checkout = async (session) => {
     active_employees:   employee_ids,
     setup_fee_paid:     true,
     onboarding_status:  'pending_form',
+    office_status:      'requested',
+    office_plan:        office_plan_for_employee_count(employee_ids.length),
     status:             'active',
   });
 
