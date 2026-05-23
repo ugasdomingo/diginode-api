@@ -493,7 +493,7 @@ const get_admin_client_detail = async (req, res, next) => {
 const update_client_office = async (req, res, next) => {
   try {
     const { client_id } = req.params;
-    const allowed = ['office_url', 'office_status', 'office_plan', 'office_instance_id', 'office_deployed_at'];
+    const allowed = ['office_url', 'office_status', 'office_plan', 'office_instance_id', 'office_deployed_at', 'office_admin_token'];
     const update = {};
 
     for (const key of allowed) {
@@ -513,6 +513,67 @@ const update_client_office = async (req, res, next) => {
     if (!client) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
 
     res.json({ success: true, data: client });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── GET /api/admin/offices/health ─────────────────────────────────────────
+// Fans out to each live office instance and aggregates their health snapshot.
+// 30s memory cache so the admin can refresh aggressively without hammering offices.
+const HEALTH_CACHE_TTL_MS = Number(process.env.OFFICES_HEALTH_CACHE_TTL_MS ?? 30_000);
+const HEALTH_FETCH_TIMEOUT_MS = Number(process.env.OFFICES_HEALTH_TIMEOUT_MS ?? 5000);
+let healthCache = { fetchedAt: 0, payload: null };
+
+const fetch_office_snapshot = async ({ url, token }) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HEALTH_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${url.replace(/\/$/, '')}/api/health/snapshot`, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) return { ok: false, status: response.status };
+    const json = await response.json().catch(() => null);
+    return { ok: true, data: json?.data ?? null };
+  } catch (err) {
+    return { ok: false, error: err?.message ?? 'fetch_failed' };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const get_offices_health = async (req, res, next) => {
+  try {
+    if (req.query.force !== '1' && healthCache.payload && Date.now() - healthCache.fetchedAt < HEALTH_CACHE_TTL_MS) {
+      return res.json({ success: true, data: healthCache.payload, cachedAt: new Date(healthCache.fetchedAt).toISOString() });
+    }
+
+    const clients = await Client.find({ office_url: { $exists: true, $nin: [null, ''] } })
+      .select('+office_admin_token name email office_url office_status office_plan office_instance_id office_deployed_at onboarding_status');
+
+    const results = await Promise.all(clients.map(async (client) => {
+      const base = {
+        clientId: client._id,
+        clientName: client.name,
+        clientEmail: client.email,
+        officeUrl: client.office_url,
+        officeStatus: client.office_status,
+        officePlan: client.office_plan,
+        officeInstanceId: client.office_instance_id,
+        onboardingStatus: client.onboarding_status,
+      };
+      if (!client.office_admin_token) {
+        return { ...base, health: null, reachable: false, error: 'admin_token_missing' };
+      }
+      const snap = await fetch_office_snapshot({ url: client.office_url, token: client.office_admin_token });
+      if (!snap.ok) return { ...base, health: null, reachable: false, error: snap.error ?? `http_${snap.status}` };
+      return { ...base, reachable: true, health: snap.data };
+    }));
+
+    healthCache = { fetchedAt: Date.now(), payload: results };
+    res.json({ success: true, data: results, cachedAt: new Date(healthCache.fetchedAt).toISOString() });
   } catch (err) {
     next(err);
   }
@@ -576,4 +637,5 @@ export {
   get_admin_client_detail,
   update_client_office,
   create_payment_link,
+  get_offices_health,
 };

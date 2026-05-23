@@ -3,6 +3,7 @@ import SupportTicket from '../models/support_ticket_model.js';
 import { get_client_billing } from '../services/billing_service.js';
 import { analyze_ticket } from '../services/ingeniero_service.js';
 import { AI_PLANS, EMPLOYEE_NAMES } from '../services/stripe_service.js';
+import { notify_ops } from '../services/ops_notify_service.js';
 
 const AI_PLAN_SLUGS = new Set(['individual', 'estudio', 'clinica']);
 
@@ -202,4 +203,90 @@ const get_portal_plan = async (req, res, next) => {
   }
 };
 
-export { get_portal_me, get_portal_tickets, create_support_ticket, get_portal_plan };
+// ─── GET /api/portal/onboarding ────────────────────────────────────────────
+const get_portal_onboarding = async (req, res, next) => {
+  try {
+    const client = await Client.findById(req.user.client_id).select(
+      'onboarding_form onboarding_status office_status office_plan office_url'
+    );
+    if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
+
+    res.json({
+      success: true,
+      data: {
+        form:              client.onboarding_form ?? {},
+        onboarding_status: client.onboarding_status ?? 'pending_form',
+        office_status:     client.office_status ?? 'not_requested',
+        office_plan:       client.office_plan ?? null,
+        office_url:        client.office_url ?? null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── POST /api/portal/onboarding ───────────────────────────────────────────
+// The client fills the form so the owner can provision their office instance.
+const save_portal_onboarding = async (req, res, next) => {
+  try {
+    const allowed = [
+      'business_name', 'sector', 'timezone', 'locale',
+      'slack_workspace', 'slack_bot_token', 'slack_signing_secret', 'slack_default_channel',
+      'materials_link', 'additional_notes',
+    ];
+    const incoming = req.body ?? {};
+    const update = { submitted_at: new Date() };
+    for (const key of allowed) {
+      if (typeof incoming[key] === 'string') update[key] = incoming[key].trim();
+    }
+
+    if (!update.business_name) {
+      return res.status(400).json({ success: false, message: 'business_name is required' });
+    }
+
+    const client = await Client.findByIdAndUpdate(
+      req.user.client_id,
+      {
+        $set: {
+          onboarding_form: update,
+          // Move forward from pending_form → configuring when the form is first submitted.
+          ...(req.body?.advance_status === false ? {} : { onboarding_status: 'configuring' }),
+        },
+      },
+      { new: true },
+    ).select('name email onboarding_form onboarding_status office_status office_plan');
+
+    if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
+
+    // Ops alert: the form is ready, owner can provision now.
+    notify_ops([
+      ':inbox_tray: *Onboarding form completado*',
+      `*Cliente:* ${client.name} (${client.email}) — id: \`${client._id}\``,
+      `*Negocio:* ${client.onboarding_form?.business_name ?? '?'} · *Sector:* ${client.onboarding_form?.sector ?? '?'}`,
+      `*Timezone:* ${client.onboarding_form?.timezone ?? '?'} · *Plan:* ${client.office_plan ?? '?'}`,
+      client.onboarding_form?.materials_link ? `*Materiales:* ${client.onboarding_form.materials_link}` : '',
+      client.onboarding_form?.additional_notes ? `*Notas:* ${client.onboarding_form.additional_notes}` : '',
+    ].filter(Boolean).join('\n')).catch(() => {});
+
+    res.json({
+      success: true,
+      data: {
+        form: client.onboarding_form,
+        onboarding_status: client.onboarding_status,
+        office_status: client.office_status,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export {
+  get_portal_me,
+  get_portal_tickets,
+  create_support_ticket,
+  get_portal_plan,
+  get_portal_onboarding,
+  save_portal_onboarding,
+};

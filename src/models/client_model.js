@@ -79,12 +79,34 @@ const client_schema = new mongoose.Schema(
     office_deployed_at: {
       type: Date,
     },
+    // Admin Bearer token of the deployed office instance — used by the
+    // ops dashboard to pull health snapshots. Treat as secret.
+    office_admin_token: {
+      type: String,
+      trim: true,
+      select: false,
+    },
     // Telegram chat IDs for direct client ↔ employee communication
     // Key: employee slug, Value: Telegram chat_id
     telegram_chat_ids: {
       type: Map,
       of: String,
       default: {},
+    },
+    // Captured from the client during /portal/onboarding. The owner uses this
+    // to provision the diginode-office instance for the client.
+    onboarding_form: {
+      business_name:        { type: String, trim: true },
+      sector:               { type: String, trim: true },
+      timezone:             { type: String, trim: true, default: 'Europe/Madrid' },
+      locale:               { type: String, trim: true, default: 'es-ES' },
+      slack_workspace:      { type: String, trim: true },
+      slack_bot_token:      { type: String, trim: true },
+      slack_signing_secret: { type: String, trim: true },
+      slack_default_channel:{ type: String, trim: true },
+      materials_link:       { type: String, trim: true },
+      additional_notes:     { type: String, trim: true },
+      submitted_at:         { type: Date },
     },
     status: {
       type: String,

@@ -35,6 +35,7 @@ import {
   get_admin_client_detail,
   update_client_office,
   create_payment_link,
+  get_offices_health,
 } from '../controllers/admin_controller.js';
 
 const router = Router();
@@ -77,6 +78,7 @@ router.get('/clients',             get_admin_clients);
 router.get('/clients/:client_id',  get_admin_client_detail);
 router.patch('/clients/:client_id/office', update_client_office);
 router.post('/payment-links',      create_payment_link);
+router.get('/offices/health',      get_offices_health);
 
 // ── Conversations (Instagram agent) ──────────────────────────────────────────
 router.get('/conversations',                        get_conversations);

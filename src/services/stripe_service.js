@@ -5,6 +5,7 @@ import Package from '../models/package_model.js';
 import PackageSubscription from '../models/package_subscription_model.js';
 import Payment from '../models/payment_model.js';
 import { send_welcome_email, send_suspension_email } from './email_service.js';
+import { notify_office_requested } from './ops_notify_service.js';
 
 // ── Empleados AI pricing ────────────────────────────────────────────────────
 const AI_PLANS = {
@@ -498,6 +499,14 @@ const handle_bolsa_checkout = async (session) => {
       office_plan: office_plan_for_employee_count(active_employees.length),
       status: 'active',
     });
+    notify_office_requested({
+      client: { _id: client._id, email, full_name },
+      plan: office_plan_for_employee_count(active_employees.length),
+      employees: active_employees,
+      source: 'bolsa_checkout',
+      amount,
+      currency: (session.currency ?? 'eur').toUpperCase(),
+    }).catch(() => {});
   }
 
   await Payment.create({
@@ -552,6 +561,14 @@ const handle_package_checkout = async (session) => {
       office_plan: office_config.plan,
       status: 'active',
     });
+    notify_office_requested({
+      client: { _id: client._id, email, full_name },
+      plan: office_config.plan,
+      employees: office_config.employees,
+      source: `package_checkout:${package_slug}`,
+      amount: (session.amount_total ?? 0) / 100,
+      currency: (session.currency ?? 'eur').toUpperCase(),
+    }).catch(() => {});
   }
 
   await PackageSubscription.create({
@@ -654,6 +671,14 @@ const handle_ai_plan_checkout = async (session) => {
     office_plan:        office_plan_for_employee_count(employee_ids.length),
     status:             'active',
   });
+  notify_office_requested({
+    client: { _id: client._id, email, full_name },
+    plan: office_plan_for_employee_count(employee_ids.length),
+    employees: employee_ids,
+    source: `ai_plan_checkout:${plan}`,
+    amount: monthly_amount,
+    currency: 'EUR',
+  }).catch(() => {});
 
   await PackageSubscription.create({
     client_id:                  client._id,
