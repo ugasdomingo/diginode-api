@@ -1,5 +1,7 @@
 import express from 'express';
 import { create_ai_plan_checkout_session, AI_PLANS, EMPLOYEE_NAMES } from '../services/stripe_service.js';
+import validate from '../middleware/validate_middleware.js';
+import { ai_plan_checkout_schema } from '../schemas/checkout_schema.js';
 
 const router = express.Router();
 
@@ -21,7 +23,7 @@ router.get('/plans', (_req, res) => {
 // POST /api/empleados/checkout
 // Public — no auth required. Creates a Stripe Checkout session for an AI plan.
 // Body: { plan: 'individual'|'estudio'|'clinica', employee_id?: string }
-router.post('/checkout', async (req, res, next) => {
+router.post('/checkout', validate(ai_plan_checkout_schema), async (req, res, next) => {
   try {
     const { plan, employee_id } = req.body;
     const result = await create_ai_plan_checkout_session({ plan, employee_id });

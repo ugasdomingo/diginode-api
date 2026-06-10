@@ -38,8 +38,8 @@ if (process.env.NODE_ENV !== 'test') {
 // Stripe webhooks need the raw body for signature validation — must come BEFORE express.json()
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 
-// JSON parsing for all other routes
-app.use(express.json());
+// JSON parsing for all other routes — cap body size to blunt memory-exhaustion payloads
+app.use(express.json({ limit: '1mb' }));
 
 // Rate limiting — 100 requests per 15 minutes per IP
 const limiter = rateLimit({
