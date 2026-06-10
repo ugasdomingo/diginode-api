@@ -17,6 +17,7 @@ import despacho_routes from './routes/despacho_routes.js';
 import entrepreneur_routes from './routes/entrepreneur_routes.js';
 import clinica_routes from './routes/clinica_routes.js';
 import empleados_routes from './routes/empleados_routes.js';
+import demo_routes from './routes/demo_routes.js';
 import error_middleware from './middleware/error_middleware.js';
 
 const app = express();
@@ -69,6 +70,7 @@ app.use('/api/despacho', despacho_routes);
 app.use('/api/entrepreneur', entrepreneur_routes);
 app.use('/api/clinica', clinica_routes);
 app.use('/api/empleados', empleados_routes);
+app.use('/api/demo', demo_routes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

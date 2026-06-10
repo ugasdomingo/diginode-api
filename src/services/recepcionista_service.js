@@ -1,8 +1,15 @@
 import Lead from '../models/lead_model.js';
 import { generate_text } from './gemini_service.js';
-import { RECEPCIONISTA_PROMPT } from '../utils/prompts.js';
+import { RECEPCIONISTA_PROMPT, nora_demo_prompt } from '../utils/prompts.js';
+import { DEMO_MESSAGE_LIMIT } from './usage_service.js';
+import { PLANS } from '../config/plans.js';
 
-const process_message = async ({ contact_id, platform, message, sender_name = null }) => {
+// Fixed reply once a demo contact hits the message cap — never calls the LLM.
+const DEMO_CAPPED_REPLY =
+  'Me ha encantado charlar contigo 🙂 Esta demo tiene un límite de mensajes. ' +
+  'Para activar a Nora en tu propio negocio, deja tus datos en la web y te contactamos.';
+
+const process_message = async ({ contact_id, platform, message, sender_name = null, is_demo = false }) => {
   // Find or create the lead
   let lead = await Lead.findOne({ contact_id, platform });
 
@@ -12,13 +19,25 @@ const process_message = async ({ contact_id, platform, message, sender_name = nu
       platform,
       name: sender_name,
       status: 'in_conversation',
+      source: is_demo ? 'demo_whatsapp' : 'other',
+      funnel_stage: 'demo_started',
       chat_history: [],
     });
   }
 
+  // Demo cost guard: cap the public Nora demo per contact before touching the LLM.
+  if (is_demo) {
+    const user_turns = lead.chat_history.filter(m => m.role === 'user').length;
+    if (user_turns >= DEMO_MESSAGE_LIMIT) {
+      return { response: DEMO_CAPPED_REPLY, lead_id: lead._id.toString(), status: lead.status, capped: true };
+    }
+  }
+
+  const system_prompt = is_demo ? nora_demo_prompt(PLANS.entrepreneur) : RECEPCIONISTA_PROMPT;
+
   // Generate response using the full conversation history for context
   const ai_response = await generate_text(
-    RECEPCIONISTA_PROMPT,
+    system_prompt,
     message,
     lead.chat_history.toObject ? lead.chat_history.toObject() : lead.chat_history,
     'flash'
@@ -30,10 +49,17 @@ const process_message = async ({ contact_id, platform, message, sender_name = nu
     { role: 'model', parts: [{ text: ai_response }] }
   );
 
-  // Qualify the lead when the AI shares the booking link
-  const booking_link = process.env.CAL_BOOKING_LINK || '';
-  if (lead.status === 'in_conversation' && booking_link && ai_response.includes(booking_link)) {
-    lead.status = 'qualified';
+  if (is_demo) {
+    // Keep the funnel source pinned and promote to "identified" once we have a name.
+    lead.source = 'demo_whatsapp';
+    if (sender_name && !lead.name) lead.name = sender_name;
+    if (lead.name && lead.funnel_stage === 'demo_started') lead.funnel_stage = 'identified';
+  } else {
+    // Qualify the lead when the AI shares the booking link
+    const booking_link = process.env.CAL_BOOKING_LINK || '';
+    if (lead.status === 'in_conversation' && booking_link && ai_response.includes(booking_link)) {
+      lead.status = 'qualified';
+    }
   }
 
   await lead.save();
