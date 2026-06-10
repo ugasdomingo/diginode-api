@@ -48,10 +48,12 @@ const OFFICE_PACKAGE_CONFIG = {
   'despacho-digital': {
     plan: 'operativo',
     employees: ['recepcionista', 'asistente'],
+    monthly: 300,
   },
   'clinica-digital': {
     plan: 'full',
     employees: ['recepcionista', 'asistente', 'content-manager', 'gestor-relaciones'],
+    monthly: 500,
   },
 };
 
@@ -82,6 +84,38 @@ const calculate_bolsa_setup = (ids) => {
 };
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// ── Amount-contrast guard (defense-in-depth) ────────────────────────────────
+// The webhook dispatches fulfillment by session.metadata.type. As a second line
+// of defense, an activation handler verifies that the amount Stripe actually
+// charged matches what that product should cost, so a session crafted to trigger
+// a more valuable fulfillment than was paid for is rejected instead of fulfilled.
+const charged_eur = (session) => (session.amount_total ?? 0) / 100;
+
+const amount_mismatch = (session, expected_eur) =>
+  expected_eur == null || Math.abs(charged_eur(session) - expected_eur) >= 0.01;
+
+// Records the payment flagged for manual review and skips product activation.
+const flag_amount_mismatch = async (session, { type, label, expected_eur }) => {
+  console.error(
+    `[stripe] amount mismatch on ${type} session ${session.id}: ` +
+    `charged ${charged_eur(session)} EUR, expected ${expected_eur} EUR — activation skipped`
+  );
+  const existing = await Payment.findOne({ stripe_session_id: session.id });
+  if (existing) return;
+  await Payment.create({
+    payer_email:              session.customer_details?.email,
+    payer_name:               session.customer_details?.name,
+    stripe_session_id:        session.id,
+    stripe_payment_intent_id: session.payment_intent ?? undefined,
+    amount:                   charged_eur(session),
+    currency:                 (session.currency ?? 'eur').toUpperCase(),
+    description:              `[REVISAR IMPORTE] ${label}`,
+    type,
+    reference_slug:           'review',
+    reference_label:          label,
+  });
+};
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -484,6 +518,13 @@ const handle_bolsa_checkout = async (session) => {
   const installments = parseInt(session.metadata?.installments ?? '1', 10);
   const inst_number  = parseInt(session.metadata?.installment_number ?? '1', 10);
 
+  // Contrast charged amount against the setup fee recorded at checkout creation.
+  const setup_total  = parseInt(session.metadata?.setup_total ?? '0', 10);
+  const expected     = installments === 3 ? Math.ceil(setup_total / 3) : setup_total;
+  if (amount_mismatch(session, expected)) {
+    return flag_amount_mismatch(session, { type: 'bolsa', label: `Bolsa de Empleo IA — ${label}`, expected_eur: expected });
+  }
+
   const client      = await ensure_account({ email, full_name, plan: 'bolsa' });
   const receipt_url = await get_receipt_url(session.payment_intent);
   const active_employees = ids
@@ -540,6 +581,13 @@ const handle_package_checkout = async (session) => {
   const existing = await PackageSubscription.findOne({ stripe_checkout_session_id: session.id });
   if (existing) return;
 
+  // For office packages with a fixed published price, contrast the first invoice
+  // against it. Generic packages price from their Stripe price id (trusted) → skip.
+  const office_config = OFFICE_PACKAGE_CONFIG[package_slug];
+  if (office_config && amount_mismatch(session, office_config.monthly)) {
+    return flag_amount_mismatch(session, { type: 'subscription', label: `Suscripción ${package_slug}`, expected_eur: office_config.monthly });
+  }
+
   const subscription  = await stripe.subscriptions.retrieve(stripe_subscription_id);
   const started_at    = new Date(subscription.current_period_start * 1000);
   const next_billing  = new Date(subscription.current_period_end   * 1000);
@@ -550,7 +598,6 @@ const handle_package_checkout = async (session) => {
   minimum_end_date.setMonth(minimum_end_date.getMonth() + (pkg?.minimum_months ?? 6));
 
   const client = await ensure_account({ email, full_name, plan: 'despacho-digital' });
-  const office_config = OFFICE_PACKAGE_CONFIG[package_slug];
 
   if (office_config) {
     await Client.findByIdAndUpdate(client._id, {
@@ -655,6 +702,13 @@ const handle_ai_plan_checkout = async (session) => {
   const monthly_amount         = parseFloat(session.metadata?.monthly_amount ?? '0');
 
   if (!stripe_subscription_id || !email || !plan) return;
+
+  // First invoice charges setup + first month (both line items recur monthly).
+  const plan_config = AI_PLANS[plan];
+  const expected    = plan_config ? plan_config.setup + plan_config.monthly : null;
+  if (amount_mismatch(session, expected)) {
+    return flag_amount_mismatch(session, { type: 'subscription', label: `Plan ${plan}`, expected_eur: expected });
+  }
 
   const subscription  = await stripe.subscriptions.retrieve(stripe_subscription_id);
   const started_at    = new Date(subscription.current_period_start * 1000);
