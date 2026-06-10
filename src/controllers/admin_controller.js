@@ -55,14 +55,29 @@ const get_leads = async (req, res, next) => {
 const update_lead = async (req, res, next) => {
   try {
     const { lead_id } = req.params;
-    const { status } = req.body;
+    const { status, funnel_stage } = req.body;
 
     const allowed_statuses = ['new', 'in_conversation', 'qualified', 'meeting_booked', 'won', 'lost'];
-    if (!allowed_statuses.includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status' });
+    const allowed_stages   = ['demo_started', 'identified', 'followup', 'won', 'lost'];
+
+    const update = {};
+    if (status !== undefined) {
+      if (!allowed_statuses.includes(status)) {
+        return res.status(400).json({ success: false, message: 'Invalid status' });
+      }
+      update.status = status;
+    }
+    if (funnel_stage !== undefined) {
+      if (!allowed_stages.includes(funnel_stage)) {
+        return res.status(400).json({ success: false, message: 'Invalid funnel_stage' });
+      }
+      update.funnel_stage = funnel_stage;
+    }
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ success: false, message: 'Nada que actualizar' });
     }
 
-    const lead = await Lead.findByIdAndUpdate(lead_id, { status }, { new: true }).select('-chat_history');
+    const lead = await Lead.findByIdAndUpdate(lead_id, update, { new: true }).select('-chat_history');
 
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });

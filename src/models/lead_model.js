@@ -46,6 +46,18 @@ const lead_schema = new mongoose.Schema(
       enum: ['new', 'in_conversation', 'qualified', 'meeting_booked', 'won', 'lost'],
       default: 'new',
     },
+    // Where this lead originated — used by the funnel dashboard (F3-3).
+    source: {
+      type: String,
+      enum: ['organic', 'ads', 'demo_whatsapp', 'web_form', 'other'],
+      default: 'other',
+    },
+    // Funnel position, tracked independently from the sales `status` above.
+    funnel_stage: {
+      type: String,
+      enum: ['demo_started', 'identified', 'followup', 'won', 'lost'],
+      default: 'demo_started',
+    },
     // Full conversation history sent to Gemini for context
     chat_history: [chat_message_schema],
     // Booking ID from Cal.com once a meeting is scheduled
