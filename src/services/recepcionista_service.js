@@ -50,10 +50,16 @@ const process_message = async ({ contact_id, platform, message, sender_name = nu
   );
 
   if (is_demo) {
-    // Keep the funnel source pinned and promote to "identified" once we have a name.
+    // Keep the funnel source pinned and promote to "identified" once we have a
+    // name or once Nora shares the booking link (the demo's closing action).
     lead.source = 'demo_whatsapp';
     if (sender_name && !lead.name) lead.name = sender_name;
-    if (lead.name && lead.funnel_stage === 'demo_started') lead.funnel_stage = 'identified';
+    const booking_link = process.env.CAL_BOOKING_LINK || '';
+    const shared_booking = booking_link && ai_response.includes(booking_link);
+    if (shared_booking) lead.status = 'qualified';
+    if ((lead.name || shared_booking) && lead.funnel_stage === 'demo_started') {
+      lead.funnel_stage = 'identified';
+    }
   } else {
     // Qualify the lead when the AI shares the booking link
     const booking_link = process.env.CAL_BOOKING_LINK || '';

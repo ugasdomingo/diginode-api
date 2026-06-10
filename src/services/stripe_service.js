@@ -235,25 +235,25 @@ const create_despacho_checkout_session = async () => {
 // refined during onboarding. Office plan = operativo (2 employees).
 const ENTREPRENEUR_EMPLOYEES = ['asistente', 'recepcionista'];
 
-// Subscription checkout at the promo rate. The promo→standard transition is set
-// up in the webhook via a subscription schedule. Requires two Stripe Price IDs
-// created once in the dashboard (test + live):
-//   STRIPE_PRICE_ENTREPRENEUR_PROMO     → 300€/mes
-//   STRIPE_PRICE_ENTREPRENEUR_STANDARD  → 200€/mes
+// Subscription checkout at a flat 300€/mes. Uses inline price_data (consistent
+// with the despacho/clinica flows) so no pre-created Stripe Price IDs are needed.
 const create_entrepreneur_checkout_session = async () => {
-  const promo_price = process.env.STRIPE_PRICE_ENTREPRENEUR_PROMO;
-  if (!promo_price) {
-    const err = new Error('El Plan Entrepreneur aún no está configurado para pagos');
-    err.status_code = 503;
-    throw err;
-  }
-
   const base = process.env.FRONTEND_URL;
 
   const session = await stripe.checkout.sessions.create({
     mode:                 'subscription',
     payment_method_types: ['card'],
-    line_items:           [{ price: promo_price, quantity: 1 }],
+    line_items: [
+      {
+        price_data: {
+          currency:     'eur',
+          product_data: { name: 'Plan Entrepreneur — Web + Panel + 2 Empleados IA' },
+          unit_amount:  PLANS.entrepreneur.monthly * 100,
+          recurring:    { interval: 'month' },
+        },
+        quantity: 1,
+      },
+    ],
     success_url:          `${base}/gracias?tipo=entrepreneur`,
     cancel_url:           `${base}/plan`,
     locale:               'es',
@@ -514,7 +514,7 @@ const handle_checkout_completed = async (session) => {
   else if (type === 'ai_plan')  await handle_ai_plan_checkout(session);
 };
 
-// Plan Entrepreneur subscription — account + office + promo→standard schedule
+// Plan Entrepreneur subscription — creates account + office, flat 300€/mes
 const handle_entrepreneur_checkout = async (session) => {
   const stripe_subscription_id = session.subscription;
   const stripe_customer_id     = session.customer;
@@ -526,9 +526,9 @@ const handle_entrepreneur_checkout = async (session) => {
   const existing = await PackageSubscription.findOne({ stripe_checkout_session_id: session.id });
   if (existing) return;
 
-  // First invoice must equal the promo monthly fee.
-  if (amount_mismatch(session, PLANS.entrepreneur.monthly_promo)) {
-    return flag_amount_mismatch(session, { type: 'subscription', label: 'Plan Entrepreneur', expected_eur: PLANS.entrepreneur.monthly_promo });
+  // First invoice must equal the flat monthly fee.
+  if (amount_mismatch(session, PLANS.entrepreneur.monthly)) {
+    return flag_amount_mismatch(session, { type: 'subscription', label: 'Plan Entrepreneur', expected_eur: PLANS.entrepreneur.monthly });
   }
 
   const subscription = await stripe.subscriptions.retrieve(stripe_subscription_id);
@@ -550,7 +550,7 @@ const handle_entrepreneur_checkout = async (session) => {
     plan: 'operativo',
     employees: ENTREPRENEUR_EMPLOYEES,
     source: 'entrepreneur_checkout',
-    amount: PLANS.entrepreneur.monthly_promo,
+    amount: PLANS.entrepreneur.monthly,
     currency: 'EUR',
   }).catch(() => {});
 
@@ -563,30 +563,8 @@ const handle_entrepreneur_checkout = async (session) => {
     status:                     'active',
     started_at,
     next_billing_date:          next_billing,
-    amount_monthly:             PLANS.entrepreneur.monthly_promo,
+    amount_monthly:             PLANS.entrepreneur.monthly,
   });
-
-  // Transition promo → standard after promo_months. Best-effort: never block
-  // fulfillment. Requires STRIPE_PRICE_ENTREPRENEUR_STANDARD to be configured.
-  const standard_price = process.env.STRIPE_PRICE_ENTREPRENEUR_STANDARD;
-  if (standard_price) {
-    try {
-      const schedule = await stripe.subscriptionSchedules.create({ from_subscription: stripe_subscription_id });
-      await stripe.subscriptionSchedules.update(schedule.id, {
-        end_behavior: 'release',
-        phases: [
-          {
-            items:      [{ price: process.env.STRIPE_PRICE_ENTREPRENEUR_PROMO, quantity: 1 }],
-            start_date: schedule.phases[0].start_date,
-            iterations: PLANS.entrepreneur.promo_months,
-          },
-          { items: [{ price: standard_price, quantity: 1 }] },
-        ],
-      });
-    } catch (err) {
-      console.error(`[entrepreneur] promo→standard schedule failed for ${stripe_subscription_id}: ${err.message}`);
-    }
-  }
 
   let receipt_url = null;
   if (session.invoice) {
@@ -603,7 +581,7 @@ const handle_entrepreneur_checkout = async (session) => {
     stripe_session_id: session.id,
     amount:            (session.amount_total ?? 0) / 100,
     currency:          (session.currency ?? 'eur').toUpperCase(),
-    description:       'Plan Entrepreneur — primer mes (promo)',
+    description:       'Plan Entrepreneur — primer mes',
     type:              'subscription',
     reference_slug:    'entrepreneur',
     reference_label:   PLANS.entrepreneur.name,

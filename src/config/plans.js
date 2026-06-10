@@ -9,21 +9,27 @@
 //
 // Amounts are EUR/month. `setup` is a one-time fee in EUR (0 = included).
 //
-// ⚠️ PENDIENTE DE DECISIÓN HUMANA: la tabla de decisiones de PLAN_DE_ACCION.md
-// menciona un downsell "solo Nora" a 150€/mes. El producto `individual` que ya
-// se cobra hoy es 180€/mes + 200€ setup. Los números de abajo reflejan lo que
-// Stripe cobra HOY (línea roja: no cambiar precios sin confirmar). Si se quiere
-// el downsell a 150€, hay que crearlo como variante y confirmarlo.
+// Estructura comercial vigente (decisión 2026-06-10):
+//   flagship  Plan Entrepreneur — 300€/mes plano (sin promo, sin permanencia)
+//   upsell    Clínica           — 500€/mes (negocios con equipo)
+//   downsell  Empleado Individual — 180€/mes ("solo Nora")
+// `estudio` (300€) se conserva como producto interno ya existente en Stripe; no
+// se muestra en la web pública (solo se ofrece flagship). Roles → ver `role`.
 export const PLANS = {
   entrepreneur: {
     slug:               'entrepreneur',
     name:               'Plan Entrepreneur',
-    monthly_promo:      300,   // primeros `promo_months`
-    promo_months:       6,
-    monthly:            200,   // a partir del mes 7
+    monthly:            300,   // precio plano, sin promoción
     setup:              0,     // incluido
     employees_included: 2,     // Alex + 1 a elegir en onboarding
     role:               'flagship',
+  },
+  clinica: {
+    slug:    'clinica',
+    name:    'Clínica',
+    monthly: 500,
+    setup:   550,
+    role:    'upsell',
   },
   individual: {
     slug:    'individual',
@@ -37,14 +43,7 @@ export const PLANS = {
     name:    'Estudio',
     monthly: 300,
     setup:   350,
-    role:    'upsell',
-  },
-  clinica: {
-    slug:    'clinica',
-    name:    'Clínica',
-    monthly: 500,
-    setup:   550,
-    role:    'upsell',
+    role:    'internal',
   },
 };
 
