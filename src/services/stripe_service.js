@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { randomBytes } from 'crypto';
+import { PLANS, AI_PLAN_SLUGS } from '../config/plans.js';
 import Client, { PLAN_EMPLOYEES } from '../models/client_model.js';
 import User from '../models/user_model.js';
 import Package from '../models/package_model.js';
@@ -9,11 +10,14 @@ import { send_welcome_email, send_suspension_email } from './email_service.js';
 import { notify_office_requested } from './ops_notify_service.js';
 
 // ── Empleados AI pricing ────────────────────────────────────────────────────
-const AI_PLANS = {
-  individual: { monthly: 180, setup: 200, name: 'Empleado Individual' },
-  estudio:    { monthly: 300, setup: 350, name: 'Estudio' },
-  clinica:    { monthly: 500, setup: 550, name: 'Clínica' },
-};
+// Derived from the single source of truth (config/plans.js) — keep no prices here.
+const AI_PLANS = Object.fromEntries(
+  AI_PLAN_SLUGS.map((slug) => [slug, {
+    monthly: PLANS[slug].monthly,
+    setup:   PLANS[slug].setup,
+    name:    PLANS[slug].name,
+  }])
+);
 
 // Employee display names for receipts / emails
 const EMPLOYEE_NAMES = {
