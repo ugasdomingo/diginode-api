@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { record_usage } from './usage_service.js';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -22,13 +23,23 @@ const MAX_ITERATIONS = 10; // safety cap on the tool-use loop
  * @param {Array}    opts.messages      - Conversation history in Anthropic format
  * @param {Array}    opts.tools         - Tool definitions (Anthropic tool_choice schema)
  * @param {Function} opts.tool_executor - async (name, input) => string|object
+ * @param {string}   [opts.client_id]   - When set, token usage for this turn is
+ *                                         metered against the client's monthly quota.
  * @returns {Promise<string>} Final text response from the assistant
  */
-const run_turn = async ({ employee = 'default', system, messages, tools = [], tool_executor }) => {
+const run_turn = async ({ employee = 'default', system, messages, tools = [], tool_executor, client_id = null }) => {
   const model = MODELS[employee] ?? MODELS.default;
 
   let current_messages = [...messages];
   let iterations = 0;
+  let acc_in = 0;
+  let acc_out = 0;
+
+  // Records this turn's accumulated token usage (+1 message) and returns the text.
+  const finalize = async (text) => {
+    await record_usage(client_id, { input_tokens: acc_in, output_tokens: acc_out });
+    return text;
+  };
 
   while (iterations < MAX_ITERATIONS) {
     iterations++;
@@ -48,10 +59,13 @@ const run_turn = async ({ employee = 'default', system, messages, tools = [], to
       tools: tools.length > 0 ? tools : undefined,
     });
 
+    acc_in  += response.usage?.input_tokens  ?? 0;
+    acc_out += response.usage?.output_tokens ?? 0;
+
     // Pure text response — we're done
     if (response.stop_reason === 'end_turn') {
       const text_block = response.content.find(b => b.type === 'text');
-      return text_block?.text ?? '';
+      return finalize(text_block?.text ?? '');
     }
 
     // Tool use — execute all requested tools and continue
@@ -92,10 +106,10 @@ const run_turn = async ({ employee = 'default', system, messages, tools = [], to
   if (last_assistant) {
     const blocks = Array.isArray(last_assistant.content) ? last_assistant.content : [];
     const text   = blocks.find(b => b.type === 'text');
-    if (text?.text) return text.text;
+    if (text?.text) return finalize(text.text);
   }
 
-  return 'Lo siento, no pude completar la solicitud en este momento.';
+  return finalize('Lo siento, no pude completar la solicitud en este momento.');
 };
 
 export { run_turn, MODELS };
