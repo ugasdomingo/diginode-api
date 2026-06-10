@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { randomBytes } from 'crypto';
 import Client, { PLAN_EMPLOYEES } from '../models/client_model.js';
 import User from '../models/user_model.js';
 import Package from '../models/package_model.js';
@@ -119,9 +120,8 @@ const flag_amount_mismatch = async (session, { type, label, expected_eur }) => {
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
-// Generates a random temporary password (14 chars, alphanumeric).
-const generate_temp_password = () =>
-  Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-4).toUpperCase();
+// Generates a cryptographically-secure temporary password (~16 chars, URL-safe).
+const generate_temp_password = () => randomBytes(12).toString('base64url');
 
 // Fetches the Stripe receipt URL for a PaymentIntent.
 // Returns null if unavailable — never throws.
