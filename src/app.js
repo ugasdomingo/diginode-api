@@ -41,14 +41,17 @@ app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 // JSON parsing for all other routes — cap body size to blunt memory-exhaustion payloads
 app.use(express.json({ limit: '1mb' }));
 
-// Rate limiting — 100 requests per 15 minutes per IP
-const limiter = rateLimit({
+// Rate limiting — generous global ceiling for normal navigation; tighter limiters
+// live on sensitive routes (login, public forms). Webhooks are excluded: they are
+// already authenticated by signature and Stripe may retry in bursts.
+const global_limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path.startsWith('/api/webhooks'),
 });
-app.use(limiter);
+app.use(global_limiter);
 
 // Routes
 app.use('/api/auth', auth_routes);
