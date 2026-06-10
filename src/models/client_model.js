@@ -35,7 +35,7 @@ const client_schema = new mongoose.Schema(
     // Legacy plans kept for backwards compatibility; new AI plans below
     plan: {
       type: String,
-      enum: ['latam', 'spain', 'despacho-digital', 'course', 'bolsa', 'individual', 'estudio', 'clinica'],
+      enum: ['latam', 'spain', 'despacho-digital', 'entrepreneur', 'course', 'bolsa', 'individual', 'estudio', 'clinica'],
       required: true,
     },
     setup_fee_paid: {
