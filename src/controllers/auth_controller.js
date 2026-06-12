@@ -15,8 +15,11 @@ const login = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const expires_in = user.role === 'admin' ? '8h' : '7d';
-    const token = sign_token({ user_id: user._id, role: user.role }, expires_in);
+    const expires_in = user.role === 'admin' ? '8h' : '24h';
+    const token = sign_token(
+      { user_id: user._id, role: user.role, token_version: user.token_version ?? 0 },
+      expires_in
+    );
 
     res.json({
       success: true,
@@ -55,4 +58,14 @@ const change_password = async (req, res, next) => {
   }
 };
 
-export { login, change_password };
+// POST /api/auth/logout-all — invalidates every existing token for this user
+const logout_all = async (req, res, next) => {
+  try {
+    await User.findByIdAndUpdate(req.user._id, { $inc: { token_version: 1 } });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export { login, change_password, logout_all };

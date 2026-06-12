@@ -19,6 +19,11 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid or inactive account' });
     }
 
+    // Reject tokens issued before the last logout-all (F5-1).
+    if ((payload.token_version ?? 0) !== (user.token_version ?? 0)) {
+      return res.status(401).json({ success: false, message: 'Session expired' });
+    }
+
     req.user = user;
     next();
   } catch {
