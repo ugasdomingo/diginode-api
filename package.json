@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.js\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
@@ -31,7 +33,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
     "nodemon": "^3.1.9",
+    "prettier": "^3.8.4",
     "vitest": "^4.1.8"
   },
   "repository": {
