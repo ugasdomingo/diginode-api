@@ -71,6 +71,11 @@ const lead_schema = new mongoose.Schema(
     last_followup_at: {
       type: Date,
     },
+    // How many emails Nora has sent this contact from the public demo (cap 2).
+    demo_emails_sent: {
+      type: Number,
+      default: 0,
+    },
     // Full conversation history sent to Gemini for context
     chat_history: [chat_message_schema],
     // Booking ID from Cal.com once a meeting is scheduled
