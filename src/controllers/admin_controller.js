@@ -13,6 +13,7 @@ import { analyze_meeting } from '../services/ingeniero_service.js';
 import { convert_lead_to_client } from '../services/crm_service.js';
 import { create_manual_checkout_session } from '../services/stripe_service.js';
 import { clamp_pagination } from '../utils/pagination.js';
+import { post_webhook } from '../utils/retry_fetch.js';
 
 // GET /api/admin/dashboard
 const get_dashboard = async (_req, res, next) => {
@@ -154,12 +155,12 @@ const generate_content = async (req, res, next) => {
 
     const campaign = await Campaign.create({ name, context });
 
-    // Fire-and-forget: trigger Make.com scenario without blocking the response
-    fetch(process.env.MAKE_CONTENT_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaign_id: campaign._id.toString(), name, context }),
-    }).catch((err) => console.error('[Make content webhook error]', err.message));
+    // Trigger Make.com scenario without blocking the response. Retries + dead-letter (F6-5).
+    post_webhook(
+      process.env.MAKE_CONTENT_WEBHOOK_URL,
+      { campaign_id: campaign._id.toString(), name, context },
+      { label: 'make_content' }
+    );
 
     res.status(201).json({ success: true, data: campaign });
   } catch (err) {
