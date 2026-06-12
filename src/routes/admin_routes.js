@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, require_role } from '../middleware/auth_middleware.js';
+import validate_object_id from '../middleware/validate_object_id.js';
 import {
   get_conversations,
   get_conversation_detail,
@@ -48,37 +49,37 @@ router.get('/dashboard', get_dashboard);
 router.get('/funnel', get_funnel);
 
 router.get('/leads', get_leads);
-router.patch('/leads/:lead_id', update_lead);
-router.post('/leads/:lead_id/convert', convert_lead);
+router.patch('/leads/:lead_id', validate_object_id('lead_id'), update_lead);
+router.post('/leads/:lead_id/convert', validate_object_id('lead_id'), convert_lead);
 
 router.post('/content/generate', generate_content);
 router.get('/content/campaigns', get_campaigns);
-router.patch('/content/campaigns/:campaign_id', update_campaign);
+router.patch('/content/campaigns/:campaign_id', validate_object_id('campaign_id'), update_campaign);
 
 router.get('/blog', get_admin_posts);
 router.post('/blog', create_post);
-router.patch('/blog/:post_id', update_post);
-router.delete('/blog/:post_id', delete_post);
+router.patch('/blog/:post_id', validate_object_id('post_id'), update_post);
+router.delete('/blog/:post_id', validate_object_id('post_id'), delete_post);
 
 router.post('/sales/analyze', analyze_sales);
 
 router.get('/courses', get_admin_courses);
 router.post('/courses', create_course);
-router.patch('/courses/:course_id', update_course);
-router.delete('/courses/:course_id', delete_course);
-router.get('/courses/:course_id/waitlist', get_course_waitlist);
+router.patch('/courses/:course_id', validate_object_id('course_id'), update_course);
+router.delete('/courses/:course_id', validate_object_id('course_id'), delete_course);
+router.get('/courses/:course_id/waitlist', validate_object_id('course_id'), get_course_waitlist);
 
 router.get('/knowledge/:key', get_knowledge);
 router.put('/knowledge/:key', update_knowledge);
 
 router.get('/packages', get_admin_packages);
 router.post('/packages', create_package);
-router.patch('/packages/:package_id', update_package);
-router.delete('/packages/:package_id', delete_package);
+router.patch('/packages/:package_id', validate_object_id('package_id'), update_package);
+router.delete('/packages/:package_id', validate_object_id('package_id'), delete_package);
 
 router.get('/clients',             get_admin_clients);
-router.get('/clients/:client_id',  get_admin_client_detail);
-router.patch('/clients/:client_id/office', update_client_office);
+router.get('/clients/:client_id',  validate_object_id('client_id'), get_admin_client_detail);
+router.patch('/clients/:client_id/office', validate_object_id('client_id'), update_client_office);
 router.post('/payment-links',      create_payment_link);
 router.get('/offices/health',      get_offices_health);
 
