@@ -33,6 +33,12 @@ const process_message = async ({ contact_id, platform, message, sender_name = nu
     }
   }
 
+  // Capture an email if the visitor types one — enables the follow-up sequence (F3-5).
+  if (!lead.email) {
+    const email_match = message.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+    if (email_match) lead.email = email_match[0].toLowerCase();
+  }
+
   const system_prompt = is_demo ? nora_demo_prompt(PLANS.entrepreneur) : RECEPCIONISTA_PROMPT;
 
   // Generate response using the full conversation history for context

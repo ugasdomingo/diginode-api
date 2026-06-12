@@ -22,6 +22,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.0",
     "morgan": "^1.10.0",
+    "node-cron": "^4.2.1",
     "openai": "^6.34.0",
     "resend": "^4.0.0",
     "stripe": "^22.0.2",

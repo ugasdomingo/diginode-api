@@ -33,6 +33,11 @@ const lead_schema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
     country: {
       type: String,
       trim: true,
@@ -57,6 +62,14 @@ const lead_schema = new mongoose.Schema(
       type: String,
       enum: ['demo_started', 'identified', 'followup', 'won', 'lost'],
       default: 'demo_started',
+    },
+    // Follow-up sequence progress (F3-5): 0 = none sent, up to 4.
+    followup_step: {
+      type: Number,
+      default: 0,
+    },
+    last_followup_at: {
+      type: Date,
     },
     // Full conversation history sent to Gemini for context
     chat_history: [chat_message_schema],
