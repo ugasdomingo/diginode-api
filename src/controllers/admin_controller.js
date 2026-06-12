@@ -12,6 +12,7 @@ import Package from '../models/package_model.js';
 import { analyze_meeting } from '../services/ingeniero_service.js';
 import { convert_lead_to_client } from '../services/crm_service.js';
 import { create_manual_checkout_session } from '../services/stripe_service.js';
+import { clamp_pagination } from '../utils/pagination.js';
 
 // GET /api/admin/dashboard
 const get_dashboard = async (_req, res, next) => {
@@ -75,16 +76,16 @@ const get_funnel = async (req, res, next) => {
 // GET /api/admin/leads
 const get_leads = async (req, res, next) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status } = req.query;
     const filter = status ? { status } : {};
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page, limit, skip } = clamp_pagination(req.query);
 
     const [leads, total] = await Promise.all([
-      Lead.find(filter).select('-chat_history').sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      Lead.find(filter).select('-chat_history').sort({ created_at: -1 }).skip(skip).limit(limit),
       Lead.countDocuments(filter),
     ]);
 
-    res.json({ success: true, data: leads, total, page: Number(page) });
+    res.json({ success: true, data: leads, total, page });
   } catch (err) {
     next(err);
   }
@@ -169,15 +170,14 @@ const generate_content = async (req, res, next) => {
 // GET /api/admin/content/campaigns
 const get_campaigns = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page, limit, skip } = clamp_pagination(req.query);
 
     const [campaigns, total] = await Promise.all([
-      Campaign.find().sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      Campaign.find().sort({ created_at: -1 }).skip(skip).limit(limit),
       Campaign.countDocuments(),
     ]);
 
-    res.json({ success: true, data: campaigns, total, page: Number(page) });
+    res.json({ success: true, data: campaigns, total, page });
   } catch (err) {
     next(err);
   }
@@ -221,15 +221,14 @@ const slugify = (title) =>
 // GET /api/admin/blog
 const get_admin_posts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page, limit, skip } = clamp_pagination(req.query);
 
     const [posts, total] = await Promise.all([
-      BlogPost.find().sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      BlogPost.find().sort({ created_at: -1 }).skip(skip).limit(limit),
       BlogPost.countDocuments(),
     ]);
 
-    res.json({ success: true, data: posts, total, page: Number(page) });
+    res.json({ success: true, data: posts, total, page });
   } catch (err) {
     next(err);
   }
@@ -505,18 +504,18 @@ const update_knowledge = async (req, res, next) => {
 // GET /api/admin/clients
 const get_admin_clients = async (req, res, next) => {
   try {
-    const { page = 1, limit = 30, status, plan } = req.query;
+    const { status, plan } = req.query;
     const filter = {};
     if (status) filter.status = status;
     if (plan)   filter.plan   = plan;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page, limit, skip } = clamp_pagination(req.query, { default_limit: 30 });
 
     const [clients, total] = await Promise.all([
-      Client.find(filter).sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      Client.find(filter).sort({ created_at: -1 }).skip(skip).limit(limit),
       Client.countDocuments(filter),
     ]);
 
-    res.json({ success: true, data: clients, total, page: Number(page) });
+    res.json({ success: true, data: clients, total, page });
   } catch (err) {
     next(err);
   }
