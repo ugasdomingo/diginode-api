@@ -72,6 +72,9 @@ const payment_schema = new mongoose.Schema(
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );
 
+// Portal/admin frequently list a client's payments newest-first (F5-3).
+payment_schema.index({ client_id: 1, created_at: -1 });
+
 const Payment = mongoose.model('Payment', payment_schema);
 
 export default Payment;
