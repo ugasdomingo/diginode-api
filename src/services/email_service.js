@@ -87,4 +87,32 @@ const send_followup_email = async (to, { name, step }) => {
   });
 };
 
-export { send_welcome_email, send_suspension_email, send_followup_email };
+// ── Nora demo email (N3) ────────────────────────────────────────────────────
+const escape_html = (s = '') =>
+  String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// Email composed by Nora during the public demo. `body` is visitor-dictated, so
+// it is HTML-escaped. Carries a clear demo footer.
+const send_nora_demo_email = async (to, { subject, body, name }) => {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: subject || 'Un mensaje de Nora (DigiNode)',
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1a1a1a;">
+        <h2>Hola${name ? ' ' + escape_html(name) : ''},</h2>
+        <p>Soy <strong>Nora</strong>, la recepcionista con IA de DigiNode. Me pediste que te enviara esto:</p>
+        <blockquote style="border-left: 3px solid #1E90FF; margin: 16px 0; padding: 8px 16px; color: #333;">
+          ${escape_html(body)}
+        </blockquote>
+        <p>Si quieres una recepcionista como yo atendiendo tu negocio 24/7, estaré encantada de ayudarte.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+        <p style="font-size: 12px; color: #888;">
+          Este correo se generó desde la demo pública de DigiNode a petición tuya. Si no lo solicitaste, ignóralo.
+        </p>
+      </div>
+    `,
+  });
+};
+
+export { send_welcome_email, send_suspension_email, send_followup_email, send_nora_demo_email };
