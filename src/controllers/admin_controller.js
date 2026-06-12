@@ -33,6 +33,45 @@ const get_dashboard = async (_req, res, next) => {
   }
 };
 
+// GET /api/admin/funnel?period=week|month
+// Aggregated funnel metrics for the F3 dashboard.
+const get_funnel = async (req, res, next) => {
+  try {
+    const days  = req.query.period === 'month' ? 30 : 7;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const match = { created_at: { $gte: since } };
+
+    const [by_source, by_stage, total] = await Promise.all([
+      Lead.aggregate([{ $match: match }, { $group: { _id: '$source',       count: { $sum: 1 } } }]),
+      Lead.aggregate([{ $match: match }, { $group: { _id: '$funnel_stage', count: { $sum: 1 } } }]),
+      Lead.countDocuments(match),
+    ]);
+
+    const stage  = Object.fromEntries(by_stage.map(s => [s._id ?? 'unknown', s.count]));
+    const source = Object.fromEntries(by_source.map(s => [s._id ?? 'unknown', s.count]));
+
+    // Demos started = every lead that entered the funnel in the period.
+    // Identified+ = gave name/business (identified, followup or won).
+    const demos_started   = total;
+    const identified      = (stage.identified ?? 0) + (stage.followup ?? 0) + (stage.won ?? 0);
+    const won             = stage.won ?? 0;
+    const lost            = stage.lost ?? 0;
+    const identified_rate = demos_started ? Math.round((identified / demos_started) * 100) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        period: days === 30 ? 'month' : 'week',
+        demos_started, identified, won, lost, identified_rate,
+        by_source: source,
+        by_stage:  stage,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /api/admin/leads
 const get_leads = async (req, res, next) => {
   try {
@@ -626,6 +665,7 @@ const create_payment_link = async (req, res, next) => {
 
 export {
   get_dashboard,
+  get_funnel,
   get_leads,
   update_lead,
   convert_lead,

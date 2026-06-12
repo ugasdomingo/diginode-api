@@ -9,6 +9,7 @@ import {
 } from '../controllers/conversations_controller.js';
 import {
   get_dashboard,
+  get_funnel,
   get_leads,
   update_lead,
   convert_lead,
@@ -44,6 +45,7 @@ const router = Router();
 router.use(authenticate, require_role('admin'));
 
 router.get('/dashboard', get_dashboard);
+router.get('/funnel', get_funnel);
 
 router.get('/leads', get_leads);
 router.patch('/leads/:lead_id', update_lead);
