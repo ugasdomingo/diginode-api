@@ -527,15 +527,21 @@ const get_admin_client_detail = async (req, res, next) => {
   try {
     const { client_id } = req.params;
 
-    const [client, payments, subscription] = await Promise.all([
+    const [client, payments, subscription, has_token] = await Promise.all([
       Client.findById(client_id),
       Payment.find({ client_id }).sort({ created_at: -1 }),
       PackageSubscription.findOne({ client_id, status: { $ne: 'canceled' } }),
+      Client.exists({ _id: client_id, office_admin_token: { $exists: true, $ne: null } }),
     ]);
 
     if (!client) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
 
-    res.json({ success: true, data: { client, payments, subscription } });
+    // Never expose the office admin token; surface only whether one is set (F5-4).
+    const client_obj = client.toObject();
+    delete client_obj.office_admin_token;
+    client_obj.office_admin_token_set = Boolean(has_token);
+
+    res.json({ success: true, data: { client: client_obj, payments, subscription } });
   } catch (err) {
     next(err);
   }
@@ -565,7 +571,10 @@ const update_client_office = async (req, res, next) => {
 
     if (!client) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
 
-    res.json({ success: true, data: client });
+    const client_obj = client.toObject();
+    delete client_obj.office_admin_token;
+
+    res.json({ success: true, data: client_obj });
   } catch (err) {
     next(err);
   }
