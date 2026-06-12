@@ -1,21 +1,21 @@
 import BlogPost from '../models/blog_post_model.js';
+import { clamp_pagination } from '../utils/pagination.js';
 
 // GET /api/blog
 const get_published_posts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page, limit, skip } = clamp_pagination(req.query, { default_limit: 10 });
 
     const [posts, total] = await Promise.all([
       BlogPost.find({ status: 'published' })
         .select('-content')
         .sort({ published_at: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(limit),
       BlogPost.countDocuments({ status: 'published' }),
     ]);
 
-    res.json({ success: true, data: posts, total, page: Number(page) });
+    res.json({ success: true, data: posts, total, page });
   } catch (err) {
     next(err);
   }

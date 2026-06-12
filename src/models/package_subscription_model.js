@@ -51,6 +51,9 @@ const package_subscription_schema = new mongoose.Schema(
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );
 
+// Looked up by client (portal/admin) and on subscription webhooks (F5-3).
+package_subscription_schema.index({ client_id: 1 });
+
 const PackageSubscription = mongoose.model('PackageSubscription', package_subscription_schema);
 
 export default PackageSubscription;

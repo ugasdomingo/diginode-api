@@ -38,4 +38,53 @@ const send_suspension_email = async (to, { name }) => {
   });
 };
 
-export { send_welcome_email, send_suspension_email };
+// ── Follow-up sequence (F3-5) ───────────────────────────────────────────────
+// Four-touch nurture for demo leads who gave their data but didn't buy.
+const FOLLOWUP_STEPS = {
+  1: {
+    subject: 'Lo que Nora haría en tu negocio',
+    body: (name) => `
+      <h2>Hola ${name || ''},</h2>
+      <p>Ayer probaste a Nora. Esto es lo que haría por ti desde el día 1: contestar
+      cada WhatsApp en segundos, agendar tus citas y filtrar lo que de verdad necesita tu atención.</p>
+      <p>Mientras tú trabajas o descansas, ella atiende. ¿Hablamos de ponerla en tu negocio?</p>`,
+  },
+  2: {
+    subject: 'Un caso real (en 60 segundos)',
+    body: (name) => `
+      <h2>Hola ${name || ''},</h2>
+      <p>Negocios como el tuyo recuperan horas cada semana dejando que el empleado IA
+      conteste y agende. Sin contratar a nadie y sin migrar de herramienta.</p>
+      <p>Si quieres, te enseñamos cómo lo configuramos para tu caso concreto.</p>`,
+  },
+  3: {
+    subject: '¿Te quedó alguna duda?',
+    body: (name) => `
+      <h2>Hola ${name || ''},</h2>
+      <p>Las dudas más habituales: «¿y si contesta algo que yo no firmaría?» (tú defines
+      qué puede decir y cuándo escalar) y «¿es complicado?» (lo montamos nosotros en 7 días).</p>
+      <p>Responde a este correo con tu duda y te la resolvemos.</p>`,
+  },
+  4: {
+    subject: '14 días de garantía — sin riesgo',
+    body: (name) => `
+      <h2>Hola ${name || ''},</h2>
+      <p>El Plan Entrepreneur tiene <strong>garantía de 14 días</strong>: si no te ahorra
+      tiempo, te devolvemos el mes. Y sin permanencia.</p>
+      <p>Activamos pocos negocios al mes por capacidad de onboarding. Si lo quieres este mes,
+      este es el momento.</p>`,
+  },
+};
+
+const send_followup_email = async (to, { name, step }) => {
+  const tpl = FOLLOWUP_STEPS[step];
+  if (!tpl) return;
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: tpl.subject,
+    html: `${tpl.body(name)}<br><p>El equipo de DigiNode</p>`,
+  });
+};
+
+export { send_welcome_email, send_suspension_email, send_followup_email };

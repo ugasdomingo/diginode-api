@@ -12,6 +12,8 @@ import Package from '../models/package_model.js';
 import { analyze_meeting } from '../services/ingeniero_service.js';
 import { convert_lead_to_client } from '../services/crm_service.js';
 import { create_manual_checkout_session } from '../services/stripe_service.js';
+import { clamp_pagination } from '../utils/pagination.js';
+import { post_webhook } from '../utils/retry_fetch.js';
 
 // GET /api/admin/dashboard
 const get_dashboard = async (_req, res, next) => {
@@ -33,19 +35,58 @@ const get_dashboard = async (_req, res, next) => {
   }
 };
 
+// GET /api/admin/funnel?period=week|month
+// Aggregated funnel metrics for the F3 dashboard.
+const get_funnel = async (req, res, next) => {
+  try {
+    const days  = req.query.period === 'month' ? 30 : 7;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const match = { created_at: { $gte: since } };
+
+    const [by_source, by_stage, total] = await Promise.all([
+      Lead.aggregate([{ $match: match }, { $group: { _id: '$source',       count: { $sum: 1 } } }]),
+      Lead.aggregate([{ $match: match }, { $group: { _id: '$funnel_stage', count: { $sum: 1 } } }]),
+      Lead.countDocuments(match),
+    ]);
+
+    const stage  = Object.fromEntries(by_stage.map(s => [s._id ?? 'unknown', s.count]));
+    const source = Object.fromEntries(by_source.map(s => [s._id ?? 'unknown', s.count]));
+
+    // Demos started = every lead that entered the funnel in the period.
+    // Identified+ = gave name/business (identified, followup or won).
+    const demos_started   = total;
+    const identified      = (stage.identified ?? 0) + (stage.followup ?? 0) + (stage.won ?? 0);
+    const won             = stage.won ?? 0;
+    const lost            = stage.lost ?? 0;
+    const identified_rate = demos_started ? Math.round((identified / demos_started) * 100) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        period: days === 30 ? 'month' : 'week',
+        demos_started, identified, won, lost, identified_rate,
+        by_source: source,
+        by_stage:  stage,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /api/admin/leads
 const get_leads = async (req, res, next) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status } = req.query;
     const filter = status ? { status } : {};
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page, limit, skip } = clamp_pagination(req.query);
 
     const [leads, total] = await Promise.all([
-      Lead.find(filter).select('-chat_history').sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      Lead.find(filter).select('-chat_history').sort({ created_at: -1 }).skip(skip).limit(limit),
       Lead.countDocuments(filter),
     ]);
 
-    res.json({ success: true, data: leads, total, page: Number(page) });
+    res.json({ success: true, data: leads, total, page });
   } catch (err) {
     next(err);
   }
@@ -55,14 +96,29 @@ const get_leads = async (req, res, next) => {
 const update_lead = async (req, res, next) => {
   try {
     const { lead_id } = req.params;
-    const { status } = req.body;
+    const { status, funnel_stage } = req.body;
 
     const allowed_statuses = ['new', 'in_conversation', 'qualified', 'meeting_booked', 'won', 'lost'];
-    if (!allowed_statuses.includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status' });
+    const allowed_stages   = ['demo_started', 'identified', 'followup', 'won', 'lost'];
+
+    const update = {};
+    if (status !== undefined) {
+      if (!allowed_statuses.includes(status)) {
+        return res.status(400).json({ success: false, message: 'Invalid status' });
+      }
+      update.status = status;
+    }
+    if (funnel_stage !== undefined) {
+      if (!allowed_stages.includes(funnel_stage)) {
+        return res.status(400).json({ success: false, message: 'Invalid funnel_stage' });
+      }
+      update.funnel_stage = funnel_stage;
+    }
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ success: false, message: 'Nada que actualizar' });
     }
 
-    const lead = await Lead.findByIdAndUpdate(lead_id, { status }, { new: true }).select('-chat_history');
+    const lead = await Lead.findByIdAndUpdate(lead_id, update, { new: true }).select('-chat_history');
 
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });
@@ -99,12 +155,12 @@ const generate_content = async (req, res, next) => {
 
     const campaign = await Campaign.create({ name, context });
 
-    // Fire-and-forget: trigger Make.com scenario without blocking the response
-    fetch(process.env.MAKE_CONTENT_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaign_id: campaign._id.toString(), name, context }),
-    }).catch((err) => console.error('[Make content webhook error]', err.message));
+    // Trigger Make.com scenario without blocking the response. Retries + dead-letter (F6-5).
+    post_webhook(
+      process.env.MAKE_CONTENT_WEBHOOK_URL,
+      { campaign_id: campaign._id.toString(), name, context },
+      { label: 'make_content' }
+    );
 
     res.status(201).json({ success: true, data: campaign });
   } catch (err) {
@@ -115,15 +171,14 @@ const generate_content = async (req, res, next) => {
 // GET /api/admin/content/campaigns
 const get_campaigns = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page, limit, skip } = clamp_pagination(req.query);
 
     const [campaigns, total] = await Promise.all([
-      Campaign.find().sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      Campaign.find().sort({ created_at: -1 }).skip(skip).limit(limit),
       Campaign.countDocuments(),
     ]);
 
-    res.json({ success: true, data: campaigns, total, page: Number(page) });
+    res.json({ success: true, data: campaigns, total, page });
   } catch (err) {
     next(err);
   }
@@ -167,15 +222,14 @@ const slugify = (title) =>
 // GET /api/admin/blog
 const get_admin_posts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page, limit, skip } = clamp_pagination(req.query);
 
     const [posts, total] = await Promise.all([
-      BlogPost.find().sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      BlogPost.find().sort({ created_at: -1 }).skip(skip).limit(limit),
       BlogPost.countDocuments(),
     ]);
 
-    res.json({ success: true, data: posts, total, page: Number(page) });
+    res.json({ success: true, data: posts, total, page });
   } catch (err) {
     next(err);
   }
@@ -451,18 +505,18 @@ const update_knowledge = async (req, res, next) => {
 // GET /api/admin/clients
 const get_admin_clients = async (req, res, next) => {
   try {
-    const { page = 1, limit = 30, status, plan } = req.query;
+    const { status, plan } = req.query;
     const filter = {};
     if (status) filter.status = status;
     if (plan)   filter.plan   = plan;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page, limit, skip } = clamp_pagination(req.query, { default_limit: 30 });
 
     const [clients, total] = await Promise.all([
-      Client.find(filter).sort({ created_at: -1 }).skip(skip).limit(Number(limit)),
+      Client.find(filter).sort({ created_at: -1 }).skip(skip).limit(limit),
       Client.countDocuments(filter),
     ]);
 
-    res.json({ success: true, data: clients, total, page: Number(page) });
+    res.json({ success: true, data: clients, total, page });
   } catch (err) {
     next(err);
   }
@@ -474,15 +528,21 @@ const get_admin_client_detail = async (req, res, next) => {
   try {
     const { client_id } = req.params;
 
-    const [client, payments, subscription] = await Promise.all([
+    const [client, payments, subscription, has_token] = await Promise.all([
       Client.findById(client_id),
       Payment.find({ client_id }).sort({ created_at: -1 }),
       PackageSubscription.findOne({ client_id, status: { $ne: 'canceled' } }),
+      Client.exists({ _id: client_id, office_admin_token: { $exists: true, $ne: null } }),
     ]);
 
     if (!client) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
 
-    res.json({ success: true, data: { client, payments, subscription } });
+    // Never expose the office admin token; surface only whether one is set (F5-4).
+    const client_obj = client.toObject();
+    delete client_obj.office_admin_token;
+    client_obj.office_admin_token_set = Boolean(has_token);
+
+    res.json({ success: true, data: { client: client_obj, payments, subscription } });
   } catch (err) {
     next(err);
   }
@@ -512,7 +572,10 @@ const update_client_office = async (req, res, next) => {
 
     if (!client) return res.status(404).json({ success: false, message: 'Cliente no encontrado' });
 
-    res.json({ success: true, data: client });
+    const client_obj = client.toObject();
+    delete client_obj.office_admin_token;
+
+    res.json({ success: true, data: client_obj });
   } catch (err) {
     next(err);
   }
@@ -611,6 +674,7 @@ const create_payment_link = async (req, res, next) => {
 
 export {
   get_dashboard,
+  get_funnel,
   get_leads,
   update_lead,
   convert_lead,

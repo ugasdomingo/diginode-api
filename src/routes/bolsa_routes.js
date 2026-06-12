@@ -1,11 +1,14 @@
 import express from 'express';
 import { create_bolsa_checkout_session } from '../services/stripe_service.js';
+import validate from '../middleware/validate_middleware.js';
+import { form_limiter } from '../middleware/rate_limit.js';
+import { bolsa_checkout_schema } from '../schemas/checkout_schema.js';
 
 const router = express.Router();
 
 // POST /api/bolsa/checkout
 // Public — no auth required. Creates a Stripe Checkout session for the Bolsa de Empleo setup fee.
-router.post('/checkout', async (req, res, next) => {
+router.post('/checkout', form_limiter, validate(bolsa_checkout_schema), async (req, res, next) => {
   try {
     const { employee_ids, installments } = req.body;
     const result = await create_bolsa_checkout_session({ employee_ids, installments });

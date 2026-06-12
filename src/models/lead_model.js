@@ -33,6 +33,11 @@ const lead_schema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
     country: {
       type: String,
       trim: true,
@@ -45,6 +50,26 @@ const lead_schema = new mongoose.Schema(
       type: String,
       enum: ['new', 'in_conversation', 'qualified', 'meeting_booked', 'won', 'lost'],
       default: 'new',
+    },
+    // Where this lead originated — used by the funnel dashboard (F3-3).
+    source: {
+      type: String,
+      enum: ['organic', 'ads', 'demo_whatsapp', 'web_form', 'other'],
+      default: 'other',
+    },
+    // Funnel position, tracked independently from the sales `status` above.
+    funnel_stage: {
+      type: String,
+      enum: ['demo_started', 'identified', 'followup', 'won', 'lost'],
+      default: 'demo_started',
+    },
+    // Follow-up sequence progress (F3-5): 0 = none sent, up to 4.
+    followup_step: {
+      type: Number,
+      default: 0,
+    },
+    last_followup_at: {
+      type: Date,
     },
     // Full conversation history sent to Gemini for context
     chat_history: [chat_message_schema],

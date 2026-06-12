@@ -32,6 +32,11 @@ const user_schema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Bumped to invalidate all existing JWTs for this user (logout-all / F5-1).
+    token_version: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );

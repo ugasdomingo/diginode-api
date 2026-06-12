@@ -11,10 +11,13 @@ import portal_routes from './routes/portal_routes.js';
 import blog_routes from './routes/blog_routes.js';
 import course_routes from './routes/course_routes.js';
 import package_routes from './routes/package_routes.js';
+import plans_routes from './routes/plans_routes.js';
 import bolsa_routes from './routes/bolsa_routes.js';
 import despacho_routes from './routes/despacho_routes.js';
+import entrepreneur_routes from './routes/entrepreneur_routes.js';
 import clinica_routes from './routes/clinica_routes.js';
 import empleados_routes from './routes/empleados_routes.js';
+import demo_routes from './routes/demo_routes.js';
 import error_middleware from './middleware/error_middleware.js';
 
 const app = express();
@@ -38,17 +41,20 @@ if (process.env.NODE_ENV !== 'test') {
 // Stripe webhooks need the raw body for signature validation — must come BEFORE express.json()
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 
-// JSON parsing for all other routes
-app.use(express.json());
+// JSON parsing for all other routes — cap body size to blunt memory-exhaustion payloads
+app.use(express.json({ limit: '1mb' }));
 
-// Rate limiting — 100 requests per 15 minutes per IP
-const limiter = rateLimit({
+// Rate limiting — generous global ceiling for normal navigation; tighter limiters
+// live on sensitive routes (login, public forms). Webhooks are excluded: they are
+// already authenticated by signature and Stripe may retry in bursts.
+const global_limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path.startsWith('/api/webhooks'),
 });
-app.use(limiter);
+app.use(global_limiter);
 
 // Routes
 app.use('/api/auth', auth_routes);
@@ -58,10 +64,13 @@ app.use('/api/portal', portal_routes);
 app.use('/api/blog', blog_routes);
 app.use('/api/courses', course_routes);
 app.use('/api/packages', package_routes);
+app.use('/api/plans', plans_routes);
 app.use('/api/bolsa', bolsa_routes);
 app.use('/api/despacho', despacho_routes);
+app.use('/api/entrepreneur', entrepreneur_routes);
 app.use('/api/clinica', clinica_routes);
 app.use('/api/empleados', empleados_routes);
+app.use('/api/demo', demo_routes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

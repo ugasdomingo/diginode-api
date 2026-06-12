@@ -1,4 +1,5 @@
 import Lead from '../models/lead_model.js';
+import { post_webhook } from '../utils/retry_fetch.js';
 
 // In-memory buffer: contact_id → { messages[], platform, sender_name, timer }
 const buffers = new Map();
@@ -51,16 +52,10 @@ async function flush_buffer(contact_id) {
     { role: 'user', inputType: 'single', content: combined_message },
   ];
 
-  // Fire Make scenario webhook (fire-and-forget)
-  fetch(process.env.MAKE_RECEPCIONISTA_WEBHOOK_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contact_id,
-      platform,
-      sender_name: sender_name ?? '',
-      combined_message,
-      messages: full_messages,
-    }),
-  }).catch((err) => console.error('[Buffer flush error]', err.message));
+  // Trigger Make scenario with retries + dead-letter (F6-5).
+  post_webhook(
+    process.env.MAKE_RECEPCIONISTA_WEBHOOK_URL,
+    { contact_id, platform, sender_name: sender_name ?? '', combined_message, messages: full_messages },
+    { label: 'make_recepcionista' }
+  );
 }

@@ -1,6 +1,7 @@
 import { handle_meeting_booked } from '../services/crm_service.js';
 import { handle_stripe_event } from '../services/stripe_service.js';
 import { add_to_buffer } from '../services/message_buffer_service.js';
+import { process_message } from '../services/recepcionista_service.js';
 import { handle_instagram_dm, handle_instagram_comment } from '../services/instagram_agent_service.js';
 import Campaign from '../models/campaign_model.js';
 import Knowledge from '../models/knowledge_model.js';
