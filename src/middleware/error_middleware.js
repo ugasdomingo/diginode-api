@@ -9,9 +9,14 @@ const error_middleware = (err, req, res, _next) => {
     logger.error({ err, method: req.method, path: req.originalUrl }, message);
   }
 
+  // Never expose internal error details (SDK messages, stack traces, etc.) to the client.
+  const client_message = status_code >= 500
+    ? 'Hay un problema temporal con el servicio. Por favor, inténtalo de nuevo en unos momentos.'
+    : message;
+
   res.status(status_code).json({
     success: false,
-    message,
+    message: client_message,
   });
 };
 
