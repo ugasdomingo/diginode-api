@@ -16,6 +16,10 @@ import error_middleware from './middleware/error_middleware.js';
 
 const app = express();
 
+// Behind Railway's proxy: trust the first X-Forwarded-For hop so express-rate-limit
+// sees the visitor's real IP instead of the proxy's (ERR_ERL_UNEXPECTED_X_FORWARDED_FOR).
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet());
 
