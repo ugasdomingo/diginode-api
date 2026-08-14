@@ -9,7 +9,7 @@ import { PLANS } from '../config/plans.js';
 // Fixed reply once a demo contact hits the message cap — never calls the LLM.
 const DEMO_CAPPED_REPLY =
   'Me ha encantado charlar contigo 🙂 Esta demo tiene un límite de mensajes. ' +
-  'Para activar a Nora en tu propio negocio, deja tus datos en la web y te contactamos.';
+  'Para tenerme atendiendo tu consulta, pulsa el botón Comprar Clínica Digital de la web y en unos días estoy trabajando para ti.';
 
 // Converts stored chat history (Gemini-style { role:'user'|'model', parts:[{text}] })
 // into Anthropic's message format.
@@ -57,7 +57,7 @@ const process_message = async ({ contact_id, platform, message, sender_name = nu
 
   if (is_demo) {
     const kb = await Knowledge.findOne({ key: 'nora_demo' });
-    system_prompt = nora_demo_prompt(PLANS.entrepreneur, kb?.content ?? '');
+    system_prompt = nora_demo_prompt(PLANS.clinica, kb?.content ?? '');
     tools = NORA_DEMO_TOOLS;
     tool_executor = make_nora_tool_executor(lead);
   }
