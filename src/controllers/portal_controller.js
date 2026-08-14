@@ -2,7 +2,7 @@ import Client from '../models/client_model.js';
 import SupportTicket from '../models/support_ticket_model.js';
 import { get_client_billing } from '../services/billing_service.js';
 import { analyze_ticket } from '../services/ingeniero_service.js';
-import { AI_PLANS, EMPLOYEE_NAMES } from '../services/stripe_service.js';
+import { PLANS, LEGACY_PLAN_INFO, EMPLOYEE_NAMES } from '../config/plans.js';
 import { notify_ops } from '../services/ops_notify_service.js';
 
 const AI_PLAN_SLUGS = new Set(['individual', 'estudio', 'clinica']);
@@ -170,7 +170,7 @@ const get_portal_plan = async (req, res, next) => {
 
     const is_ai_plan = AI_PLAN_SLUGS.has(client.plan);
 
-    const plan_config = is_ai_plan ? AI_PLANS[client.plan] : null;
+    const plan_config = PLANS[client.plan] ?? LEGACY_PLAN_INFO[client.plan] ?? null;
 
     const employees = (client.active_employees ?? []).map(slug => ({
       slug,

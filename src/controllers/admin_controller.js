@@ -6,9 +6,6 @@ import Knowledge from '../models/knowledge_model.js';
 import SupportTicket from '../models/support_ticket_model.js';
 import Campaign from '../models/campaign_model.js';
 import BlogPost from '../models/blog_post_model.js';
-import Course from '../models/course_model.js';
-import CourseWaitlist from '../models/course_waitlist_model.js';
-import Package from '../models/package_model.js';
 import { analyze_meeting } from '../services/ingeniero_service.js';
 import { convert_lead_to_client } from '../services/crm_service.js';
 import { create_manual_checkout_session } from '../services/stripe_service.js';
@@ -316,170 +313,11 @@ const analyze_sales = async (req, res, next) => {
   }
 };
 
-// GET /api/admin/courses
-const get_admin_courses = async (_req, res, next) => {
-  try {
-    const courses = await Course.find().sort({ created_at: -1 });
-    res.json({ success: true, data: courses });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// POST /api/admin/courses
-const create_course = async (req, res, next) => {
-  try {
-    const { title, description, content, price, start_date, status, thumbnail_url, is_for_me, max_spots, spots_taken } = req.body;
-
-    if (!title || price == null) {
-      return res.status(400).json({ success: false, message: 'title y price son obligatorios' });
-    }
-    if (!is_for_me?.trim()) {
-      return res.status(400).json({ success: false, message: 'El texto "¿Es para mí?" es obligatorio' });
-    }
-
-    const slug = slugify(title);
-    const course = await Course.create({
-      title, slug, description, content, price, start_date, status, thumbnail_url,
-      is_for_me: is_for_me.trim(),
-      max_spots:   max_spots   ?? null,
-      spots_taken: spots_taken ?? 0,
-    });
-    res.status(201).json({ success: true, data: course });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// PATCH /api/admin/courses/:course_id
-const update_course = async (req, res, next) => {
-  try {
-    const { course_id } = req.params;
-    const { title, description, content, price, start_date, status, thumbnail_url, is_for_me, max_spots, spots_taken } = req.body;
-
-    const update = {};
-    if (title        !== undefined) update.title         = title;
-    if (description  !== undefined) update.description   = description;
-    if (content      !== undefined) update.content       = content;
-    if (price        !== undefined) update.price         = price;
-    if (start_date   !== undefined) update.start_date    = start_date;
-    if (status       !== undefined) update.status        = status;
-    if (thumbnail_url !== undefined) update.thumbnail_url = thumbnail_url;
-    if (is_for_me    !== undefined) update.is_for_me     = is_for_me.trim();
-    if (max_spots    !== undefined) update.max_spots     = max_spots ?? null;
-    if (spots_taken  !== undefined) update.spots_taken   = Math.max(0, spots_taken ?? 0);
-
-    const course = await Course.findByIdAndUpdate(course_id, update, { new: true });
-    if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
-    res.json({ success: true, data: course });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// DELETE /api/admin/courses/:course_id
-const delete_course = async (req, res, next) => {
-  try {
-    const course = await Course.findByIdAndDelete(req.params.course_id);
-    if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
-    res.json({ success: true });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// GET /api/admin/courses/:course_id/waitlist
-const get_course_waitlist = async (req, res, next) => {
-  try {
-    const entries = await CourseWaitlist.find({ course: req.params.course_id }).sort({ created_at: -1 });
-    res.json({ success: true, data: entries });
-  } catch (err) {
-    next(err);
-  }
-};
-
 // GET /api/admin/knowledge/:key
 const get_knowledge = async (req, res, next) => {
   try {
     const doc = await Knowledge.findOne({ key: req.params.key });
     res.json({ success: true, data: { key: req.params.key, content: doc?.content ?? '' } });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// ─── Packages Admin ───────────────────────────────────────────────────────────
-
-// GET /api/admin/packages
-const get_admin_packages = async (_req, res, next) => {
-  try {
-    const packages = await Package.find().sort({ created_at: -1 });
-    res.json({ success: true, data: packages });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// POST /api/admin/packages
-const create_package = async (req, res, next) => {
-  try {
-    const {
-      name, slug, description,
-      price_monthly, price_monthly_renewal, minimum_months,
-      stripe_price_id, features, active,
-    } = req.body;
-
-    if (!name || price_monthly == null) {
-      return res.status(400).json({ success: false, message: 'name y price_monthly son obligatorios' });
-    }
-
-    const final_slug = slug?.trim()
-      ? slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')
-      : slugify(name);
-
-    const pkg = await Package.create({
-      name, slug: final_slug, description,
-      price_monthly, price_monthly_renewal, minimum_months,
-      stripe_price_id, features, active,
-    });
-
-    res.status(201).json({ success: true, data: pkg });
-  } catch (err) {
-    if (err.code === 11000) {
-      return res.status(409).json({ success: false, message: 'Ya existe un paquete con ese slug' });
-    }
-    next(err);
-  }
-};
-
-// PATCH /api/admin/packages/:package_id
-const update_package = async (req, res, next) => {
-  try {
-    const allowed = [
-      'name', 'description', 'price_monthly', 'price_monthly_renewal',
-      'minimum_months', 'stripe_price_id', 'stripe_price_id_renewal',
-      'features', 'active',
-    ];
-    const update = {};
-    for (const key of allowed) {
-      if (req.body[key] !== undefined) update[key] = req.body[key];
-    }
-
-    const pkg = await Package.findByIdAndUpdate(req.params.package_id, update, { new: true });
-    if (!pkg) return res.status(404).json({ success: false, message: 'Paquete no encontrado' });
-
-    res.json({ success: true, data: pkg });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// DELETE /api/admin/packages/:package_id
-const delete_package = async (req, res, next) => {
-  try {
-    const pkg = await Package.findByIdAndDelete(req.params.package_id);
-    if (!pkg) return res.status(404).json({ success: false, message: 'Paquete no encontrado' });
-    res.json({ success: true });
   } catch (err) {
     next(err);
   }
@@ -686,17 +524,8 @@ export {
   update_post,
   delete_post,
   analyze_sales,
-  get_admin_courses,
-  create_course,
-  update_course,
-  delete_course,
-  get_course_waitlist,
   get_knowledge,
   update_knowledge,
-  get_admin_packages,
-  create_package,
-  update_package,
-  delete_package,
   get_admin_clients,
   get_admin_client_detail,
   update_client_office,

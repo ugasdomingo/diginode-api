@@ -3,13 +3,6 @@ import mongoose from 'mongoose';
 // Employees available across all plans
 const VALID_EMPLOYEES = ['recepcionista', 'asistente', 'gestor-relaciones', 'content-manager'];
 
-// Which employees are included by default in each AI plan
-const PLAN_EMPLOYEES = {
-  individual:       [],   // populated at checkout based on client's choice
-  estudio:          ['recepcionista', 'asistente'],
-  clinica:          ['recepcionista', 'asistente', 'gestor-relaciones', 'content-manager'],
-};
-
 const client_schema = new mongoose.Schema(
   {
     name: {
@@ -124,5 +117,5 @@ const client_schema = new mongoose.Schema(
 
 const Client = mongoose.model('Client', client_schema);
 
-export { VALID_EMPLOYEES, PLAN_EMPLOYEES };
+export { VALID_EMPLOYEES };
 export default Client;

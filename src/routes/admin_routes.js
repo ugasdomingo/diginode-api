@@ -22,17 +22,8 @@ import {
   update_post,
   delete_post,
   analyze_sales,
-  get_admin_courses,
-  create_course,
-  update_course,
-  delete_course,
-  get_course_waitlist,
   get_knowledge,
   update_knowledge,
-  get_admin_packages,
-  create_package,
-  update_package,
-  delete_package,
   get_admin_clients,
   get_admin_client_detail,
   update_client_office,
@@ -63,19 +54,8 @@ router.delete('/blog/:post_id', validate_object_id('post_id'), delete_post);
 
 router.post('/sales/analyze', analyze_sales);
 
-router.get('/courses', get_admin_courses);
-router.post('/courses', create_course);
-router.patch('/courses/:course_id', validate_object_id('course_id'), update_course);
-router.delete('/courses/:course_id', validate_object_id('course_id'), delete_course);
-router.get('/courses/:course_id/waitlist', validate_object_id('course_id'), get_course_waitlist);
-
 router.get('/knowledge/:key', get_knowledge);
 router.put('/knowledge/:key', update_knowledge);
-
-router.get('/packages', get_admin_packages);
-router.post('/packages', create_package);
-router.patch('/packages/:package_id', validate_object_id('package_id'), update_package);
-router.delete('/packages/:package_id', validate_object_id('package_id'), delete_package);
 
 router.get('/clients',             get_admin_clients);
 router.get('/clients/:client_id',  validate_object_id('client_id'), get_admin_client_detail);

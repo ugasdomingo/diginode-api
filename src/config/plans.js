@@ -1,54 +1,45 @@
-// ── Single source of truth for commercial plans ─────────────────────────────
+// ── Single source of truth for the commercial offer ─────────────────────────
 // Both the API (checkout + webhook fulfillment) and the client (via GET /api/plans)
 // read pricing from here. NEVER hardcode a price elsewhere.
 //
-// `role` drives how the client surfaces each plan:
-//   flagship → the only offer shown on the public site (Plan Entrepreneur)
-//   upsell   → offered in the sales conversation to clients with a team
-//   downsell → offered to price-sensitive prospects
-//
-// Amounts are EUR/month. `setup` is a one-time fee in EUR (0 = included).
-//
-// Estructura comercial vigente (decisión 2026-06-10):
-//   flagship  Plan Entrepreneur — 300€/mes plano (sin promo, sin permanencia)
-//   upsell    Clínica           — 500€/mes (negocios con equipo)
-//   downsell  Empleado Individual — 180€/mes ("solo Nora")
-// `estudio` (300€) se conserva como producto interno ya existente en Stripe; no
-// se muestra en la web pública (solo se ofrece flagship). Roles → ver `role`.
+// Modelo comercial vigente (decisión 2026-08-14): un solo producto.
+//   Clínica Digital — página web + 3 empleados IA, 150€/mes, sin setup y sin
+//   trial (cobro inmediato). Alquiler con opción a compra: al pagar la cuota 12
+//   el traspaso queda concretado (el cliente es dueño de su dominio y de los
+//   datos de sus clientes desde el día 1).
 export const PLANS = {
-  entrepreneur: {
-    slug:               'entrepreneur',
-    name:               'Plan Entrepreneur',
-    monthly:            300,   // precio plano, sin promoción
-    setup:              0,     // incluido
-    employees_included: 2,     // Alex + 1 a elegir en onboarding
-    role:               'flagship',
-  },
   clinica: {
-    slug:    'clinica',
-    name:    'Clínica',
-    monthly: 500,
-    setup:   550,
-    role:    'upsell',
-  },
-  individual: {
-    slug:    'individual',
-    name:    'Empleado Individual',
-    monthly: 180,
-    setup:   200,
-    role:    'downsell',
-  },
-  estudio: {
-    slug:    'estudio',
-    name:    'Estudio',
-    monthly: 300,
-    setup:   350,
-    role:    'internal',
+    slug:               'clinica',
+    name:               'Clínica Digital',
+    monthly:            150,
+    setup:              0,
+    employees_included: 3,
+    role:               'flagship',
   },
 };
 
-// Slugs handled by the AI-employee plan checkout (setup + monthly subscription).
-export const AI_PLAN_SLUGS = ['individual', 'estudio', 'clinica'];
+// Employees included in Clínica Digital (slugs must exist in VALID_EMPLOYEES of
+// client_model): Recepcionista (Nora), Auxiliar Técnico (Alex) y Creador de
+// contenido (Valeria).
+export const CLINICA_EMPLOYEES = ['recepcionista', 'asistente', 'content-manager'];
+
+// Employee display names for the portal, receipts and emails.
+export const EMPLOYEE_NAMES = {
+  recepcionista:       'Nora',
+  asistente:           'Alex',
+  'gestor-relaciones': 'Marcos',
+  'content-manager':   'Valeria',
+};
+
+// Display-only info for plans that existing clients may still be subscribed to.
+// Their Stripe subscriptions keep renewing through the generic webhook handlers;
+// this map only feeds the portal so their plan name/price still render.
+export const LEGACY_PLAN_INFO = {
+  entrepreneur:       { name: 'Plan Entrepreneur',   monthly: 300 },
+  'despacho-digital': { name: 'Despacho Digital',    monthly: 300 },
+  individual:         { name: 'Empleado Individual', monthly: 180 },
+  estudio:            { name: 'Estudio',             monthly: 300 },
+};
 
 // Public-facing view of a plan (no internal-only fields to hide for now, but
 // centralizing the shape keeps GET /api/plans stable if internals grow).

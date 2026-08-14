@@ -9,14 +9,8 @@ import webhook_routes from './routes/webhook_routes.js';
 import admin_routes from './routes/admin_routes.js';
 import portal_routes from './routes/portal_routes.js';
 import blog_routes from './routes/blog_routes.js';
-import course_routes from './routes/course_routes.js';
-import package_routes from './routes/package_routes.js';
 import plans_routes from './routes/plans_routes.js';
-import bolsa_routes from './routes/bolsa_routes.js';
-import despacho_routes from './routes/despacho_routes.js';
-import entrepreneur_routes from './routes/entrepreneur_routes.js';
 import clinica_routes from './routes/clinica_routes.js';
-import empleados_routes from './routes/empleados_routes.js';
 import demo_routes from './routes/demo_routes.js';
 import error_middleware from './middleware/error_middleware.js';
 
@@ -62,14 +56,8 @@ app.use('/api/webhooks', webhook_routes);
 app.use('/api/admin', admin_routes);
 app.use('/api/portal', portal_routes);
 app.use('/api/blog', blog_routes);
-app.use('/api/courses', course_routes);
-app.use('/api/packages', package_routes);
 app.use('/api/plans', plans_routes);
-app.use('/api/bolsa', bolsa_routes);
-app.use('/api/despacho', despacho_routes);
-app.use('/api/entrepreneur', entrepreneur_routes);
 app.use('/api/clinica', clinica_routes);
-app.use('/api/empleados', empleados_routes);
 app.use('/api/demo', demo_routes);
 
 // Health check
