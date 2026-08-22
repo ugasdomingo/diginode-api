@@ -3,6 +3,7 @@ import SupportTicket from '../models/support_ticket_model.js';
 import { get_client_billing } from '../services/billing_service.js';
 import { analyze_ticket } from '../services/ingeniero_service.js';
 import { PLANS, LEGACY_PLAN_INFO, EMPLOYEE_NAMES } from '../config/plans.js';
+import { get_training, private_training } from '../config/trainings.js';
 import { notify_ops } from '../services/ops_notify_service.js';
 
 const AI_PLAN_SLUGS = new Set(['individual', 'estudio', 'clinica']);
@@ -26,19 +27,26 @@ const get_portal_me = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Client not found' });
     }
 
-    // Shape purchases for the frontend
-    const purchases = payments.map((p) => ({
-      id:                 p._id,
-      type:               p.type ?? 'manual',
-      reference_slug:     p.reference_slug ?? null,
-      reference_label:    p.reference_label ?? p.description ?? 'Pago',
-      amount:             p.amount,
-      currency:           p.currency,
-      receipt_url:        p.receipt_url ?? null,
-      installment_number: p.installment_number ?? null,
-      installment_total:  p.installment_total  ?? null,
-      created_at:         p.created_at,
-    }));
+    // Shape purchases for the frontend. Training purchases carry the full event
+    // detail (logistics, join link, requirements) so the portal can show it
+    // without a second request — safe here because the buyer is authenticated.
+    const purchases = payments.map((p) => {
+      const training = p.type === 'course' ? get_training(p.reference_slug) : null;
+
+      return {
+        id:                 p._id,
+        type:               p.type ?? 'manual',
+        reference_slug:     p.reference_slug ?? null,
+        reference_label:    p.reference_label ?? p.description ?? 'Pago',
+        amount:             p.amount,
+        currency:           p.currency,
+        receipt_url:        p.receipt_url ?? null,
+        installment_number: p.installment_number ?? null,
+        installment_total:  p.installment_total  ?? null,
+        created_at:         p.created_at,
+        training:           training ? private_training(training) : null,
+      };
+    });
 
     // Upcoming payments: subscription billing + pending installments
     const upcoming = [];

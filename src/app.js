@@ -12,6 +12,7 @@ import blog_routes from './routes/blog_routes.js';
 import plans_routes from './routes/plans_routes.js';
 import clinica_routes from './routes/clinica_routes.js';
 import demo_routes from './routes/demo_routes.js';
+import trainings_routes from './routes/trainings_routes.js';
 import error_middleware from './middleware/error_middleware.js';
 
 const app = express();
@@ -63,6 +64,7 @@ app.use('/api/blog', blog_routes);
 app.use('/api/plans', plans_routes);
 app.use('/api/clinica', clinica_routes);
 app.use('/api/demo', demo_routes);
+app.use('/api/trainings', trainings_routes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

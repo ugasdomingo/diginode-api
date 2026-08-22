@@ -1,12 +1,14 @@
 import Stripe from 'stripe';
 import { randomBytes } from 'crypto';
 import { PLANS, CLINICA_EMPLOYEES } from '../config/plans.js';
+import { get_training } from '../config/trainings.js';
 import Client from '../models/client_model.js';
 import User from '../models/user_model.js';
 import PackageSubscription from '../models/package_subscription_model.js';
 import Payment from '../models/payment_model.js';
-import { send_welcome_email, send_suspension_email } from './email_service.js';
-import { notify_office_requested } from './ops_notify_service.js';
+import TrainingEnrollment from '../models/training_enrollment_model.js';
+import { send_welcome_email, send_suspension_email, send_training_welcome_email } from './email_service.js';
+import { notify_office_requested, notify_ops } from './ops_notify_service.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -67,7 +69,14 @@ const get_receipt_url = async (payment_intent_id) => {
 //   - Client exists, no User:  creates User, sends welcome email
 //   - Both exist:              returns existing client, skips email
 //   - User exists, no client:  creates Client, links User
-const ensure_account = async ({ email, full_name, plan }) => {
+//
+// `send_welcome` lets each product deliver its own credentials email (the
+// Clínica welcome and the training welcome say very different things). It is
+// only called when a User is actually created, so a buyer who already has an
+// account never receives a second temporary password.
+// Note: `plan` only applies when the Client is created — buying a training must
+// never downgrade an existing Clínica client.
+const ensure_account = async ({ email, full_name, plan, send_welcome = send_welcome_email }) => {
   if (!email) return null;
 
   let client = await Client.findOne({ email });
@@ -88,7 +97,7 @@ const ensure_account = async ({ email, full_name, plan }) => {
       client_id:                client._id,
       password_change_required: true,
     });
-    await send_welcome_email(email, { name: full_name, temp_password });
+    await send_welcome(email, { name: full_name, temp_password });
   } else if (!existing_user.client_id) {
     // Edge case: user exists but was never linked to a client record
     await User.findByIdAndUpdate(existing_user._id, { client_id: client._id });
@@ -124,6 +133,58 @@ const create_clinica_checkout_session = async () => {
     locale:            'es',
     metadata:          { type: 'clinica' },
     subscription_data: { metadata: { plan: 'clinica' } },
+  });
+
+  return { url: session.url, session_id: session.id };
+};
+
+// Live training (taller) — one-off payment, limited seats. Buyers have no
+// account yet: it is created on fulfillment and the credentials travel by email,
+// while the success page exchanges the session id for an immediate login.
+const create_training_checkout_session = async (slug) => {
+  const training = get_training(slug);
+
+  if (!training) {
+    const err = new Error('Formación no encontrada');
+    err.status_code = 404;
+    throw err;
+  }
+
+  if (training.status !== 'open') {
+    const err = new Error('Las inscripciones para esta formación están cerradas.');
+    err.status_code = 409;
+    throw err;
+  }
+
+  // Best-effort capacity guard: two buyers checking out simultaneously can still
+  // slip through, and that is deliberate — see handle_training_checkout, which
+  // honours the seat and flags it rather than keeping money for nothing.
+  const seats_taken = await TrainingEnrollment.count_seats(training.slug);
+  if (seats_taken >= training.capacity) {
+    const err = new Error('Plazas agotadas.');
+    err.status_code = 409;
+    throw err;
+  }
+
+  const base = process.env.FRONTEND_URL;
+
+  const session = await stripe.checkout.sessions.create({
+    mode:                 'payment',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency:     training.currency.toLowerCase(),
+          product_data: { name: `${training.name} — Taller online en directo` },
+          unit_amount:  Math.round(training.price * 100),
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: `${base}/formacion/${training.slug}/gracias?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url:  `${base}/formacion/${training.slug}`,
+    locale:      'es',
+    metadata:    { type: 'training', training_slug: training.slug },
   });
 
   return { url: session.url, session_id: session.id };
@@ -187,8 +248,9 @@ const handle_stripe_event = async (event) => {
 const handle_checkout_completed = async (session) => {
   const { type } = session.metadata ?? {};
 
-  if (type === 'clinica')     await handle_clinica_checkout(session);
-  else if (type === 'manual') await handle_manual_checkout(session);
+  if (type === 'clinica')       await handle_clinica_checkout(session);
+  else if (type === 'training') await handle_training_checkout(session);
+  else if (type === 'manual')   await handle_manual_checkout(session);
 };
 
 // Clínica Digital subscription — creates account + office with the 3 employees.
@@ -215,6 +277,9 @@ const handle_clinica_checkout = async (session) => {
   const client = await ensure_account({ email, full_name, plan: 'clinica' });
 
   await Client.findByIdAndUpdate(client._id, {
+    // Explicit: ensure_account only sets `plan` when it creates the Client, so a
+    // buyer who first bought a training would otherwise stay on plan 'course'.
+    plan:              'clinica',
     active_employees:  CLINICA_EMPLOYEES,
     setup_fee_paid:    true,
     onboarding_status: 'pending_form',
@@ -264,6 +329,114 @@ const handle_clinica_checkout = async (session) => {
     reference_label:   PLANS.clinica.name,
     receipt_url,
   });
+};
+
+// Live training (taller) — records the seat, creates the portal account and
+// emails the credentials. Exported because the success page runs the very same
+// fulfillment when it beats the webhook, so it must be safe to call twice.
+//
+// The TrainingEnrollment insert is the lock: its unique index on
+// stripe_session_id means whichever call arrives second exits right there,
+// before any account or email work happens.
+const handle_training_checkout = async (session) => {
+  const training_slug = session.metadata?.training_slug;
+  const training      = get_training(training_slug);
+  const email         = session.customer_details?.email;
+  const full_name     = session.customer_details?.name ?? email;
+
+  if (!training || !email) return null;
+
+  const already = await TrainingEnrollment.findOne({ stripe_session_id: session.id });
+  if (already) return already;
+
+  // The amount charged must match the published price for this training.
+  if (amount_mismatch(session, training.price)) {
+    await flag_amount_mismatch(session, {
+      type:         'course',
+      label:        training.name,
+      expected_eur: training.price,
+    });
+    return null;
+  }
+
+  // A seat sold past capacity is honoured, never refused: the money is already
+  // taken. It is flagged here and ops gets a Slack ping to sort it out.
+  const seats_taken = await TrainingEnrollment.count_seats(training.slug);
+  const overbooked  = seats_taken >= training.capacity;
+
+  let enrollment;
+  try {
+    enrollment = await TrainingEnrollment.create({
+      training_slug:     training.slug,
+      email,
+      name:              full_name,
+      stripe_session_id: session.id,
+      amount:            charged_eur(session),
+      currency:          (session.currency ?? 'eur').toUpperCase(),
+      status:            'paid',
+      overbooked,
+    });
+  } catch (err) {
+    // Duplicate key — the webhook and the success page raced. The winner owns
+    // the fulfillment; return its record so the caller can carry on.
+    if (err?.code === 11000) return TrainingEnrollment.findOne({ stripe_session_id: session.id });
+    throw err;
+  }
+
+  // A failed email must not abort account creation: the buyer can still get in
+  // through the success page, and ops is told the credentials never went out.
+  const send_welcome = async (to, payload) => {
+    try {
+      await send_training_welcome_email(to, { ...payload, training });
+    } catch (err) {
+      notify_ops(
+        `:warning: *Fallo al enviar credenciales de formación* — ${to} (${training.name}). ` +
+        `El alumno puede entrar por la página de gracias. Error: ${err?.message ?? 'desconocido'}`
+      ).catch(() => {});
+    }
+  };
+
+  const client = await ensure_account({ email, full_name, plan: 'course', send_welcome });
+
+  if (client) {
+    enrollment = await TrainingEnrollment.findByIdAndUpdate(
+      enrollment._id,
+      { client_id: client._id },
+      { new: true }
+    );
+  }
+
+  const receipt_url = await get_receipt_url(session.payment_intent);
+
+  try {
+    await Payment.create({
+      client_id:                client?._id ?? undefined,
+      payer_email:              email,
+      payer_name:               full_name,
+      stripe_session_id:        session.id,
+      stripe_payment_intent_id: session.payment_intent ?? undefined,
+      amount:                   charged_eur(session),
+      currency:                 (session.currency ?? 'eur').toUpperCase(),
+      description:              training.name,
+      type:                     'course',
+      reference_slug:           training.slug,
+      reference_label:          training.name,
+      receipt_url,
+    });
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+  }
+
+  notify_ops([
+    overbooked
+      ? ':rotating_light: *Inscripción POR ENCIMA DEL AFORO* — revisar'
+      : ':books: *Nueva inscripción a formación*',
+    `*Formación:* ${training.name} (${training.slug})`,
+    `*Alumno:* ${full_name} (${email})`,
+    `*Plazas:* ${seats_taken + 1}/${training.capacity} · *Importe:* ${charged_eur(session)} EUR`,
+  ].join('\n')).catch(() => {});
+
+  return enrollment;
 };
 
 // Admin-issued manual payment link
@@ -353,6 +526,9 @@ const handle_invoice_succeeded = async (invoice) => {
 
 export {
   create_clinica_checkout_session,
+  create_training_checkout_session,
   create_manual_checkout_session,
+  handle_training_checkout,
   handle_stripe_event,
+  stripe,
 };
