@@ -1,10 +1,11 @@
 import Lead from '../models/lead_model.js';
 import Knowledge from '../models/knowledge_model.js';
 import { run_turn } from './anthropic_service.js';
-import { RECEPCIONISTA_PROMPT, nora_demo_prompt } from '../utils/prompts.js';
+import { recepcionista_prompt, nora_demo_prompt } from '../utils/prompts.js';
 import { DEMO_MESSAGE_LIMIT } from './usage_service.js';
 import { NORA_DEMO_TOOLS, make_nora_tool_executor } from './nora_tools_service.js';
 import { PLANS } from '../config/plans.js';
+import { open_trainings } from '../config/trainings.js';
 
 // Fixed reply once a demo contact hits the message cap — never calls the LLM.
 const DEMO_CAPPED_REPLY =
@@ -51,13 +52,16 @@ const process_message = async ({ contact_id, platform, message, sender_name = nu
 
   // Build the system prompt. Demo loads the editable FAQ + agent tools; the real
   // receptionist runs a plain conversation.
-  let system_prompt = RECEPCIONISTA_PROMPT;
+  // Solo las formaciones vigentes: una ya celebrada desaparece del prompt sola.
+  const trainings = open_trainings();
+
+  let system_prompt = recepcionista_prompt(PLANS.clinica, trainings);
   let tools = [];
   let tool_executor;
 
   if (is_demo) {
     const kb = await Knowledge.findOne({ key: 'nora_demo' });
-    system_prompt = nora_demo_prompt(PLANS.clinica, kb?.content ?? '');
+    system_prompt = nora_demo_prompt(PLANS.clinica, kb?.content ?? '', trainings);
     tools = NORA_DEMO_TOOLS;
     tool_executor = make_nora_tool_executor(lead);
   }

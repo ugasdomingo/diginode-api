@@ -12,7 +12,7 @@ export const TRAININGS = {
     slug:     'ia-para-terapeutas',
     name:     'IA para Terapeutas',
     tagline:  'Libera tu tiempo. Transforma tu consulta.',
-    audience: 'Para terapeutas saturados o en crecimiento',
+    audience: 'Para vivir de tu terapia sin saturarte',
 
     // ── Commercial ──────────────────────────────────────────────────────────
     price:    100,
@@ -64,13 +64,12 @@ export const TRAININGS = {
 
     // Borrador genérico — edítalo cuando tengas el detalle definitivo.
     requirements: [
-      'Ordenador (portátil o de sobremesa) con cámara y micrófono: el taller es práctico y se trabaja en directo',
+      'Acceso a un ordenador: las herramientas de IA que usaremos se manejan mucho mejor desde uno que desde el móvil',
       'Conexión a internet estable',
-      'Navegador actualizado (Chrome o Edge)',
       'Cuenta de Google para entrar a Google Meet',
       'Unos 25€ para las herramientas de IA que usaremos, que contratas con tu propia cuenta (te explico cómo el mismo día)',
       'No necesitas conocimientos técnicos previos',
-      'Recomendado: trae ejemplos reales de tu consulta (mensajes típicos de pacientes, cómo gestionas tu agenda) para trabajar sobre tus propios casos',
+      'Recomendado: trae ejemplos reales de tu consulta (mensajes típicos de pacientes, cómo gestionas tu agenda) y, sobre todo, las tareas que más tiempo te roban, te rompen la concentración o te dan pereza: trabajaremos sobre ellas',
     ],
 
     faq: [
@@ -96,6 +95,13 @@ export const TRAININGS = {
 
 // Convenience accessor — returns null instead of undefined for unknown slugs.
 export const get_training = (slug) => TRAININGS[slug] ?? null;
+
+// Trainings still sellable today: open for enrolment and not yet held. Nora uses
+// this so she never pitches a workshop whose date has already passed.
+export const open_trainings = (now = new Date()) =>
+  Object.values(TRAININGS).filter(
+    (t) => t.status === 'open' && new Date(`${t.date}T23:59:59`) >= now
+  );
 
 // Public-facing view. `meet_url` is intentionally omitted: it is only served to
 // authenticated buyers through the portal (see private_training).
