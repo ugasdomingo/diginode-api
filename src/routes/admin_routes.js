@@ -29,6 +29,7 @@ import {
   update_client_office,
   create_payment_link,
   get_offices_health,
+  get_analytics,
 } from '../controllers/admin_controller.js';
 
 const router = Router();
@@ -37,6 +38,7 @@ const router = Router();
 router.use(authenticate, require_role('admin'));
 
 router.get('/dashboard', get_dashboard);
+router.get('/analytics', get_analytics);
 router.get('/funnel', get_funnel);
 
 router.get('/leads', get_leads);

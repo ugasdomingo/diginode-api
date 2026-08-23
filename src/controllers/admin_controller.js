@@ -3,6 +3,7 @@ import Client from '../models/client_model.js';
 import Payment from '../models/payment_model.js';
 import PackageSubscription from '../models/package_subscription_model.js';
 import Knowledge from '../models/knowledge_model.js';
+import { get_summary } from '../services/analytics_service.js';
 import SupportTicket from '../models/support_ticket_model.js';
 import Campaign from '../models/campaign_model.js';
 import BlogPost from '../models/blog_post_model.js';
@@ -510,6 +511,19 @@ const create_payment_link = async (req, res, next) => {
   }
 };
 
+// ─── GET /api/admin/analytics ──────────────────────────────────────────────
+// Resumen de tráfico de la web pública. Datos agregados y anónimos: no hay
+// forma de saber quién fue nadie, por diseño (ver models/pageview_model.js).
+const get_analytics = async (req, res, next) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 90);
+    const data = await get_summary({ days });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export {
   get_dashboard,
   get_funnel,
@@ -531,4 +545,5 @@ export {
   update_client_office,
   create_payment_link,
   get_offices_health,
+  get_analytics,
 };
