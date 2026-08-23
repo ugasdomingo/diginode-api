@@ -30,6 +30,8 @@ import {
   create_payment_link,
   get_offices_health,
   get_analytics,
+  get_admin_trainings,
+  delete_lead,
 } from '../controllers/admin_controller.js';
 
 const router = Router();
@@ -39,11 +41,13 @@ router.use(authenticate, require_role('admin'));
 
 router.get('/dashboard', get_dashboard);
 router.get('/analytics', get_analytics);
+router.get('/trainings', get_admin_trainings);
 router.get('/funnel', get_funnel);
 
 router.get('/leads', get_leads);
 router.patch('/leads/:lead_id', validate_object_id('lead_id'), update_lead);
 router.post('/leads/:lead_id/convert', validate_object_id('lead_id'), convert_lead);
+router.delete('/leads/:lead_id', validate_object_id('lead_id'), delete_lead);
 
 router.post('/content/generate', generate_content);
 router.get('/content/campaigns', get_campaigns);

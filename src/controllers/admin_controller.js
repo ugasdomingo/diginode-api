@@ -4,6 +4,8 @@ import Payment from '../models/payment_model.js';
 import PackageSubscription from '../models/package_subscription_model.js';
 import Knowledge from '../models/knowledge_model.js';
 import { get_summary } from '../services/analytics_service.js';
+import TrainingEnrollment from '../models/training_enrollment_model.js';
+import { TRAININGS } from '../config/trainings.js';
 import SupportTicket from '../models/support_ticket_model.js';
 import Campaign from '../models/campaign_model.js';
 import BlogPost from '../models/blog_post_model.js';
@@ -123,6 +125,21 @@ const update_lead = async (req, res, next) => {
     }
 
     res.json({ success: true, data: lead });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/admin/leads/:lead_id
+// Para limpiar leads de prueba o basura. Borra también su historial de chat,
+// que es dato personal del visitante: no tiene sentido conservarlo.
+const delete_lead = async (req, res, next) => {
+  try {
+    const lead = await Lead.findByIdAndDelete(req.params.lead_id);
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Lead no encontrado' });
+    }
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }
@@ -524,6 +541,61 @@ const get_analytics = async (req, res, next) => {
   }
 };
 
+// ─── GET /api/admin/trainings ──────────────────────────────────────────────
+// Formaciones del catálogo con su aforo, su recaudación y la lista de inscritos.
+// Es la pantalla desde la que se envía el enlace de la sesión y se controla si
+// hay que abrir otra convocatoria.
+const get_admin_trainings = async (req, res, next) => {
+  try {
+    const catalogo = Object.values(TRAININGS);
+
+    const trainings = await Promise.all(
+      catalogo.map(async (t) => {
+        const enrollments = await TrainingEnrollment.find({ training_slug: t.slug })
+          .sort({ created_at: -1 })
+          .lean();
+
+        const pagadas = enrollments.filter((e) => e.status === 'paid');
+
+        return {
+          slug:        t.slug,
+          name:        t.name,
+          date:        t.date,
+          time:        t.time,
+          duration:    t.duration,
+          platform:    t.platform,
+          meet_url:    t.meet_url ?? null,
+          price:       t.price,
+          currency:    t.currency,
+          capacity:    t.capacity,
+          status:      t.status,
+          seats_taken: pagadas.length,
+          seats_left:  Math.max(t.capacity - pagadas.length, 0),
+          revenue:     pagadas.reduce((sum, e) => sum + (e.amount ?? 0), 0),
+          enrollments: enrollments.map((e) => ({
+            id:         e._id,
+            name:       e.name ?? null,
+            email:      e.email,
+            amount:     e.amount,
+            currency:   e.currency,
+            status:     e.status,
+            overbooked: e.overbooked ?? false,
+            // Si nunca canjeó el acceso automático, puede que no haya entrado
+            // al panel: conviene comprobar que le llegó el correo.
+            claimed:    !!e.claimed_at,
+            created_at: e.created_at,
+            client_id:  e.client_id ?? null,
+          })),
+        };
+      })
+    );
+
+    res.json({ success: true, data: trainings });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export {
   get_dashboard,
   get_funnel,
@@ -546,4 +618,6 @@ export {
   create_payment_link,
   get_offices_health,
   get_analytics,
+  get_admin_trainings,
+  delete_lead,
 };
