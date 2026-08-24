@@ -54,12 +54,18 @@ export const TRAININGS = {
       },
     ],
 
+    // Se muestra bajo el título «Qué obtendrás», tanto en la landing como en el
+    // panel del alumno. Cada punto es algo que se lleva puesto al salir, no una
+    // característica del taller.
     includes: [
-      'Sesión en directo con grupo reducido (máximo 10 personas)',
-      'Trabajo práctico sobre casos reales de tu propia consulta',
-      'Plantillas y prompts listos para usar desde el día siguiente',
-      'Espacio de preguntas y respuestas sin límite de tiempo',
-      'Acceso al panel de cliente con los detalles y materiales del taller',
+      'Una guía clara para usar la IA sin comprometer tu ética profesional ni la protección de datos de tus pacientes',
+      'Un segundo cerebro con el que contrastar tus casos y pensar en voz alta cuando no tienes con quién hacerlo',
+      'Un asistente que escribe el contenido de tus redes manteniendo tu voz, no la de un robot',
+      'Un asistente que te lleva la agenda y el calendario para que dejen de comerte las tardes',
+      'Un asistente que redacta tus correos e informes en minutos, no en horas',
+      'El método para automatizar tus tareas repetitivas sin escribir una sola línea de código',
+      'La grabación completa del taller, para repasarla a tu ritmo cuando quieras',
+      'Un mes de acompañamiento individual conmigo para alcanzar los objetivos que te marques durante la sesión',
     ],
 
     // Borrador genérico — edítalo cuando tengas el detalle definitivo.
@@ -79,7 +85,7 @@ export const TRAININGS = {
       },
       {
         q: '¿Se graba la sesión?',
-        a: 'Es una sesión en directo y en grupo reducido para que puedas preguntar sobre tu caso concreto. Prioriza reservar el día completo.',
+        a: 'Sí, y la grabación es tuya para repasarla cuando quieras. Aun así, reserva el día completo: es en directo y en grupo reducido, así que podrás preguntar por tu caso concreto, y eso no se recupera viendo el vídeo.',
       },
       {
         q: '¿Qué pasa si no puedo asistir?',
