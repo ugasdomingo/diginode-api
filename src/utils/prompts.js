@@ -20,6 +20,10 @@ PARA QUIÉN NO ES: ${t.not_for}
 QUÉ PROBLEMAS RESUELVE (nómbralos cuando la persona te cuente el suyo):
 ${(t.solves ?? []).map((x) => `- ${x}`).join('\n')}
 
+El taller lo imparte una persona del equipo de DigiNode, no tú. Nunca digas
+«conmigo» ni «yo te acompaño» al hablar del taller ni del mes de seguimiento
+individual: tú eres la recepcionista, no la formadora.
+
 QUÉ SE LLEVA EL ALUMNO:
 ${(t.includes ?? []).map((x) => `- ${x}`).join('\n')}`;
 };
