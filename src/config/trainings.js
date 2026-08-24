@@ -38,6 +38,31 @@ export const TRAININGS = {
     // Pon 'closed' para cerrar las ventas a mano sin tocar el aforo.
     status:   'open',
 
+    // ── Para que Nora sepa vender esto, no solo recitar la fecha ────────────
+    // Se inyecta en su prompt y en su base de conocimiento. Escrito en el
+    // lenguaje del terapeuta, no en el de la tecnología.
+    for_who:
+      'Psicólogos, coaches y terapeutas que ejercen por su cuenta. Sobre todo dos perfiles: ' +
+      'quien está saturado de tareas administrativas y ha dejado de tener vida fuera de la consulta, ' +
+      'y quien duda de si podrá vivir de su terapia porque no le llegan pacientes suficientes. ' +
+      'No hace falta ningún conocimiento técnico previo.',
+
+    not_for:
+      'No es para quien quiere que se lo monten todo hecho sin tocar nada: eso es la Clínica Digital. ' +
+      'Y no es para quien busque una IA que haga terapia: el criterio clínico y el vínculo con el ' +
+      'paciente no se delegan nunca, y en el taller se enseña justamente dónde está esa línea.',
+
+    // Dolores concretos que Nora puede nombrar en una conversación.
+    solves: [
+      'Contestar los mismos mensajes de siempre a las once de la noche',
+      'Perder tardes enteras redactando informes y correos',
+      'Cuadrar y recordar citas a mano por WhatsApp',
+      'Tener las redes abandonadas, o publicar cosas que no suenan a ti',
+      'El miedo a usar IA y acabar vulnerando el secreto profesional o la protección de datos',
+      'La soledad de no tener con quién contrastar un caso difícil',
+      'Sentir que la consulta depende de que tú estés disponible siempre',
+    ],
+
     // ── Contenido comercial ─────────────────────────────────────────────────
     benefits: [
       {
@@ -118,6 +143,9 @@ export const public_training = (t, { seats_taken = 0 } = {}) => {
     name:            t.name,
     tagline:         t.tagline,
     audience:        t.audience,
+    for_who:         t.for_who,
+    not_for:         t.not_for,
+    solves:          t.solves,
     price:           t.price,
     currency:        t.currency,
     tools_cost_note: t.tools_cost_note,

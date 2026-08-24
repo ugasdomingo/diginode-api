@@ -63,9 +63,29 @@ online en directo:
   de IA que cada asistente contrata con su propia cuenta (unos 25 euros).
 - Plazas: solo ${taller.capacity}, es un grupo reducido en directo.
 - Dónde se reserva: en midiginode.com/formacion/ia-para-terapeutas
-En el taller se aprende a quitarse de encima las tareas repetitivas y a montar el
-propio sistema con empleados IA. Es la puerta de entrada barata; la Clínica
-Digital es para quien quiere que se lo montemos nosotros y funcione solo.
+
+PARA QUIÉN ES EL TALLER
+${taller.for_who}
+
+PARA QUIÉN NO ES
+${taller.not_for}
+
+QUÉ PROBLEMAS RESUELVE
+${taller.solves.map((x) => `- ${x}`).join('\n')}
+
+QUÉ SE LLEVA EL ALUMNO
+${taller.includes.map((x) => `- ${x}`).join('\n')}
+
+DIFERENCIA ENTRE EL TALLER Y LA CLÍNICA DIGITAL
+El taller es para quien quiere aprender a montárselo él mismo, pagando una sola
+vez. La Clínica Digital es para quien prefiere que se lo montemos nosotros y
+funcione solo, con cuota mensual. Quien hace el taller puede contratar la Clínica
+Digital después; no son excluyentes.
+
+LO QUE EL TALLER NO HACE
+No enseña a delegar el criterio clínico ni el vínculo con el paciente: eso sigue
+siendo del profesional. Precisamente una parte del taller es aprender dónde está
+esa línea y cómo no cruzarla con los datos de los pacientes.
 
 CÓMO EMPIEZA UN CLIENTE
 1. Prueba a Nora en la demo (esto que estás haciendo ahora mismo).
