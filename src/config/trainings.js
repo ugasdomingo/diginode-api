@@ -95,7 +95,7 @@ export const TRAININGS = {
       'Un asistente que redacta tus correos e informes en minutos, no en horas',
       'El método para automatizar tus tareas repetitivas sin escribir una sola línea de código',
       'La grabación completa del taller, para repasarla a tu ritmo cuando quieras',
-      'Un mes de acompañamiento individual, persona a persona, para alcanzar los objetivos que te marques durante la sesión',
+      'Una mentoría individual de 30 minutos, persona a persona, para aterrizar lo aprendido en tu consulta concreta',
     ],
 
     // Borrador genérico — edítalo cuando tengas el detalle definitivo.
