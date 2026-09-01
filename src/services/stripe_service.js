@@ -77,7 +77,7 @@ const get_receipt_url = async (payment_intent_id) => {
 // Note: `plan` only applies when the Client is created — buying a training must
 // never downgrade an existing Clínica client.
 const ensure_account = async ({ email, full_name, plan, send_welcome = send_welcome_email }) => {
-  if (!email) return null;
+  if (!email) return { client: null, user_created: false };
 
   let client = await Client.findOne({ email });
 
@@ -86,6 +86,7 @@ const ensure_account = async ({ email, full_name, plan, send_welcome = send_welc
   }
 
   const existing_user = await User.findOne({ email });
+  const user_created = !existing_user;
 
   if (!existing_user) {
     const temp_password = generate_temp_password();
@@ -103,7 +104,11 @@ const ensure_account = async ({ email, full_name, plan, send_welcome = send_welc
     await User.findByIdAndUpdate(existing_user._id, { client_id: client._id });
   }
 
-  return client;
+  // `user_created` distingue una cuenta recién abierta de una que ya existía.
+  // El alta gratuita solo puede iniciar sesión automáticamente en el primer
+  // caso: si la cuenta ya existía, entregar una sesión a quien se limita a
+  // teclear ese correo sería regalarle la cuenta de otra persona.
+  return { client, user_created };
 };
 
 // ── Checkout session creators ───────────────────────────────────────────────
@@ -274,7 +279,7 @@ const handle_clinica_checkout = async (session) => {
   const started_at   = new Date(subscription.current_period_start * 1000);
   const next_billing = new Date(subscription.current_period_end   * 1000);
 
-  const client = await ensure_account({ email, full_name, plan: 'clinica' });
+  const { client } = await ensure_account({ email, full_name, plan: 'clinica' });
 
   await Client.findByIdAndUpdate(client._id, {
     // Explicit: ensure_account only sets `plan` when it creates the Client, so a
@@ -396,7 +401,7 @@ const handle_training_checkout = async (session) => {
     }
   };
 
-  const client = await ensure_account({ email, full_name, plan: 'course', send_welcome });
+  const { client } = await ensure_account({ email, full_name, plan: 'course', send_welcome });
 
   if (client) {
     enrollment = await TrainingEnrollment.findByIdAndUpdate(
@@ -525,6 +530,7 @@ const handle_invoice_succeeded = async (invoice) => {
 };
 
 export {
+  ensure_account,
   create_clinica_checkout_session,
   create_training_checkout_session,
   create_manual_checkout_session,

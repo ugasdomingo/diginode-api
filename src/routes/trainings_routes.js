@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { get_public_training, claim_training_session } from '../services/trainings_service.js';
+import { get_public_training, enroll_free, claim_training_session } from '../services/trainings_service.js';
 import { create_training_checkout_session } from '../services/stripe_service.js';
 import { auth_limiter, form_limiter } from '../middleware/rate_limit.js';
 
@@ -14,6 +14,25 @@ router.post('/claim', auth_limiter, async (req, res, next) => {
   try {
     const result = await claim_training_session(req.body?.session_id);
     res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/trainings/:slug/enroll
+// Público — alta por formulario para las formaciones gratuitas. Devuelve una
+// sesión iniciada solo si la cuenta se acaba de crear (ver enroll_free).
+// Rate limit de credenciales, no de formulario: puede emitir un token.
+router.post('/:slug/enroll', auth_limiter, async (req, res, next) => {
+  try {
+    const result = await enroll_free({
+      slug:            req.params.slug,
+      name:            req.body?.name,
+      email:           req.body?.email,
+      pain_point:      req.body?.pain_point,
+      accepts_privacy: req.body?.accepts_privacy,
+    });
+    res.status(201).json({ success: true, data: result });
   } catch (err) {
     next(err);
   }

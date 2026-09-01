@@ -15,11 +15,14 @@ export const TRAININGS = {
     audience: 'Para vivir de tu terapia sin saturarte',
 
     // ── Commercial ──────────────────────────────────────────────────────────
-    price:    100,
+    // price 0 = inscripción por formulario, sin pasar por Stripe. Poner un
+    // precio mayor que cero devuelve el taller al flujo de pago: el catálogo
+    // manda y no hay que tocar código para cambiar de modelo.
+    price:    0,
     currency: 'EUR',
     // Tools the attendee contracts with their own account. Shown on the landing
     // so nobody is surprised on the day of the workshop.
-    tools_cost_note: 'Durante el taller usaremos herramientas de IA que contratas con tu propia cuenta (unos 25€). Te explico cómo hacerlo el mismo día.',
+    tools_cost_note: 'El taller es gratuito. Lo único que cuesta dinero son las herramientas de IA que usaremos, que contratas con tu propia cuenta (unos 25€) y te explico cómo el mismo día.',
 
     // ── Logistics ───────────────────────────────────────────────────────────
     format:   'online',
@@ -34,7 +37,9 @@ export const TRAININGS = {
     meet_url: 'https://meet.google.com/vfu-uxxk-qzk',
 
     // ── Capacity ────────────────────────────────────────────────────────────
-    capacity: 10,
+    // Aforo generoso a propósito: en un taller gratuito no se presenta entre el
+    // 40% y el 60% de los inscritos.
+    capacity: 20,
     // Pon 'closed' para cerrar las ventas a mano sin tocar el aforo.
     status:   'open',
 
@@ -98,7 +103,7 @@ export const TRAININGS = {
       'Acceso a un ordenador: las herramientas de IA que usaremos se manejan mucho mejor desde uno que desde el móvil',
       'Conexión a internet estable',
       'Cuenta de Google para entrar a Google Meet',
-      'Unos 25€ para las herramientas de IA que usaremos, que contratas con tu propia cuenta (te explico cómo el mismo día)',
+      'Unos 25€ para contratar las herramientas de IA con las que trabajaremos: son tuyas y las gestionas desde tu propia cuenta (te explico cómo el mismo día)',
       'No necesitas conocimientos técnicos previos',
       'Recomendado: trae ejemplos reales de tu consulta (mensajes típicos de pacientes, cómo gestionas tu agenda) y, sobre todo, las tareas que más tiempo te roban, te rompen la concentración o te dan pereza: trabajaremos sobre ellas',
     ],
@@ -117,8 +122,12 @@ export const TRAININGS = {
         a: 'Escríbeme y buscamos una solución: puedo pasarte a la siguiente convocatoria.',
       },
       {
-        q: '¿Los 100€ incluyen las herramientas de IA?',
-        a: 'No. El taller son 100€. Las herramientas que usaremos las contratas tú con tu propia cuenta (unos 25€) y te explico cómo el mismo día.',
+        q: 'Si es gratis, ¿dónde está el truco?',
+        a: 'No hay truco. Es la primera convocatoria y me interesa que salga bien y que lo cuentes. Lo único que pagas son las herramientas de IA que usaremos (unos 25€), que contratas con tu propia cuenta y son tuyas: ese dinero no viene a mí.',
+      },
+      {
+        q: '¿Tengo que pagar algo el día del taller?',
+        a: 'A mí no. Necesitarás contratar las herramientas de IA con las que trabajaremos, que rondan los 25€ al mes en total y las gestionas tú desde tu propia cuenta. Te explico paso a paso cómo hacerlo.',
       },
     ],
   },

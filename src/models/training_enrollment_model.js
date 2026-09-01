@@ -26,14 +26,34 @@ const training_enrollment_schema = new mongoose.Schema(
       trim: true,
     },
     // Stripe Checkout Session ID — idempotency key shared with Payment.
+    // Ausente en las inscripciones gratuitas, que no pasan por Stripe: el
+    // índice es sparse para que varios documentos sin este campo convivan.
     stripe_session_id: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
+    },
+    // 'stripe' para las de pago, 'form' para el formulario gratuito.
+    source: {
+      type: String,
+      enum: ['stripe', 'form'],
+      default: 'stripe',
+    },
+    // Respuesta libre a «qué te quita más tiempo». Material para preparar el
+    // taller sobre casos reales y para saber con quién se habla.
+    pain_point: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+    },
+    // Marca de tiempo del consentimiento de la política de privacidad.
+    privacy_accepted_at: {
+      type: Date,
     },
     amount: {
       type: Number,
       required: true,
+      min: 0,
     },
     currency: {
       type: String,
@@ -62,7 +82,7 @@ const training_enrollment_schema = new mongoose.Schema(
 
 // Seat counting per training, and "did this person already enrol?" lookups.
 training_enrollment_schema.index({ training_slug: 1, status: 1 });
-training_enrollment_schema.index({ training_slug: 1, email: 1 });
+training_enrollment_schema.index({ training_slug: 1, email: 1 }, { unique: true });
 
 // Seats actually taken for a training. Lives on the model so both the checkout
 // guard and the public landing count the same way without coupling services.
