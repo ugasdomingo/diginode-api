@@ -31,6 +31,7 @@ import {
   get_offices_health,
   get_analytics,
   get_admin_trainings,
+  delete_training_enrollment,
   delete_lead,
 } from '../controllers/admin_controller.js';
 
@@ -42,6 +43,7 @@ router.use(authenticate, require_role('admin'));
 router.get('/dashboard', get_dashboard);
 router.get('/analytics', get_analytics);
 router.get('/trainings', get_admin_trainings);
+router.delete('/trainings/enrollments/:enrollment_id', validate_object_id('enrollment_id'), delete_training_enrollment);
 router.get('/funnel', get_funnel);
 
 router.get('/leads', get_leads);

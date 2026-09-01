@@ -541,6 +541,32 @@ const get_analytics = async (req, res, next) => {
   }
 };
 
+// ─── DELETE /api/admin/trainings/enrollments/:enrollment_id ────────────────
+// Libera una plaza: borra la inscripción y el registro de compra asociado, para
+// que no quede una compra huérfana en el panel del alumno.
+//
+// La cuenta del alumno NO se borra: puede tener otras cosas colgando y no es
+// decisión de esta pantalla. Si hay que eliminarla, se hace desde Clientes.
+const delete_training_enrollment = async (req, res, next) => {
+  try {
+    const enrollment = await TrainingEnrollment.findByIdAndDelete(req.params.enrollment_id);
+
+    if (!enrollment) {
+      return res.status(404).json({ success: false, message: 'Inscripción no encontrada' });
+    }
+
+    await Payment.deleteOne(
+      enrollment.stripe_session_id
+        ? { stripe_session_id: enrollment.stripe_session_id }
+        : { client_id: enrollment.client_id, reference_slug: enrollment.training_slug, amount: 0 }
+    ).catch(() => {});
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── GET /api/admin/trainings ──────────────────────────────────────────────
 // Formaciones del catálogo con su aforo, su recaudación y la lista de inscritos.
 // Es la pantalla desde la que se envía el enlace de la sesión y se controla si
@@ -619,5 +645,6 @@ export {
   get_offices_health,
   get_analytics,
   get_admin_trainings,
+  delete_training_enrollment,
   delete_lead,
 };
