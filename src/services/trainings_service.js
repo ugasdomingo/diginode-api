@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { get_training, public_training } from '../config/trainings.js';
 import TrainingEnrollment from '../models/training_enrollment_model.js';
 import User from '../models/user_model.js';
@@ -88,6 +89,8 @@ const enroll_free = async ({ slug, name, email, pain_point, accepts_privacy }) =
   try {
     enrollment = await TrainingEnrollment.create({
       training_slug:       training.slug,
+      // Clave de idempotencia propia: ver el comentario del modelo.
+      stripe_session_id:   `form_${randomUUID()}`,
       email:               clean_email,
       name:                clean_name,
       pain_point:          clean_pain || undefined,

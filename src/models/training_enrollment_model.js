@@ -25,13 +25,18 @@ const training_enrollment_schema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    // Stripe Checkout Session ID — idempotency key shared with Payment.
-    // Ausente en las inscripciones gratuitas, que no pasan por Stripe: el
-    // índice es sparse para que varios documentos sin este campo convivan.
+    // Clave de idempotencia. En las de pago es el id de sesión de Stripe; en
+    // las gratuitas, un `form_<uuid>` generado al vuelo.
+    //
+    // Por qué siempre lleva valor: el índice único de este campo se creó sin
+    // `sparse`, y Mongoose no altera los índices que ya existen en la base de
+    // datos. Con el campo vacío, la SEGUNDA inscripción gratuita chocaría con
+    // la primera y nadie más podría apuntarse. Darle un valor propio evita el
+    // choque sin necesidad de migrar el índice en producción.
     stripe_session_id: {
       type: String,
+      required: true,
       unique: true,
-      sparse: true,
     },
     // 'stripe' para las de pago, 'form' para el formulario gratuito.
     source: {
