@@ -9,7 +9,9 @@
     "dev": "nodemon src/server.js",
     "test": "vitest run",
     "lint": "eslint .",
-    "format": "prettier --write \"src/**/*.js\""
+    "format": "prettier --write \"src/**/*.js\"",
+    "lab": "node src/local_lab_server.js",
+    "lab:test": "vitest run tests/operations.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
