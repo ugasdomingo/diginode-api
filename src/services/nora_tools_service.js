@@ -1,16 +1,16 @@
-import { send_nora_demo_email } from './email_service.js';
+import { prepare_demo_email } from './demo_email_service.js';
 
 // Max emails Nora may send a single demo contact (1 + 1 retry if not received).
 export const DEMO_EMAIL_LIMIT = 2;
 
-const EMAIL_RE = /^[\w.+-]+@[\w-]+\.[\w.-]+$/;
+
 
 // ── Tool definitions (Anthropic schema) ─────────────────────────────────────
 export const NORA_DEMO_TOOLS = [
   {
     name: 'enviar_correo',
     description:
-      'Envía un correo electrónico REAL a la dirección que indique la persona. Úsala SOLO cuando te pidan explícitamente que envíes un correo. Si no tienes su dirección, pídesela antes; no la inventes.',
+      'Prepara un resumen de Diginode para revisión y confirmación en la web. NO envía ningún correo. Úsala SOLO cuando te pidan explícitamente que envíes un correo. Si no tienes su dirección, pídesela antes; no la inventes.',
     input_schema: {
       type: 'object',
       properties: {
@@ -77,39 +77,12 @@ export const build_week_agenda = (now = new Date()) => {
 // ── Tool executor factory ───────────────────────────────────────────────────
 // Closes over the lead so enviar_correo can enforce the per-contact cap and
 // persist the captured email. Returns async (name, input) => result.
-export const make_nora_tool_executor = (lead) => async (name, input) => {
-  if (name === 'agenda_semana') {
-    return { agenda: build_week_agenda() };
-  }
-
+export const make_nora_tool_executor = (lead, { context = 'clinic', supports_confirmation = false, on_pending = () => {} } = {}) => async (name, input) => {
+  if (name === 'agenda_semana') return { simulated: true, aviso: 'Agenda ficticia de ejemplo. No confirma ninguna reserva.', agenda: build_week_agenda() };
   if (name === 'enviar_correo') {
-    const to = String(input?.to_email ?? '').trim().toLowerCase();
-    if (!EMAIL_RE.test(to)) {
-      return { error: 'La dirección de correo no parece válida. Pídele que la confirme.' };
-    }
-    if ((lead.demo_emails_sent ?? 0) >= DEMO_EMAIL_LIMIT) {
-      return { error: 'Ya alcanzaste el máximo de correos de la demo para este contacto.' };
-    }
-
-    try {
-      await send_nora_demo_email(to, {
-        subject: input.asunto,
-        body:    input.cuerpo,
-        name:    lead.name,
-      });
-    } catch {
-      return { error: 'No se pudo enviar el correo en este momento.' };
-    }
-
-    // Capture the email as a lead and advance the funnel.
-    lead.email = to;
-    lead.demo_emails_sent = (lead.demo_emails_sent ?? 0) + 1;
-    lead.source = 'demo_whatsapp';
-    if (lead.funnel_stage === 'demo_started') lead.funnel_stage = 'identified';
-    await lead.save();
-
-    return { success: true, enviado_a: to, intentos_restantes: DEMO_EMAIL_LIMIT - lead.demo_emails_sent };
+    const result = await prepare_demo_email(lead, input?.to_email, context, supports_confirmation);
+    if (result.pending_action) on_pending(result.pending_action);
+    return result;
   }
-
-  return { error: `Herramienta desconocida: ${name}` };
+  return { error: 'Herramienta no disponible' };
 };

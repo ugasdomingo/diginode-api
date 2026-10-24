@@ -1,3 +1,6 @@
+import { recepcionista_prompt } from '../utils/prompts.js';
+import { PLANS } from '../config/plans.js';
+import { open_trainings } from '../config/trainings.js';
 import { handle_meeting_booked } from '../services/crm_service.js';
 import { handle_stripe_event } from '../services/stripe_service.js';
 import { add_to_buffer } from '../services/message_buffer_service.js';
@@ -221,7 +224,7 @@ const handle_make_reply = async (req, res, next) => {
 const get_knowledge = async (req, res, next) => {
   try {
     const doc = await Knowledge.findOne({ key: 'recepcionista' });
-    res.json({ success: true, content: doc?.content ?? '' });
+    res.json({ success: true, content: recepcionista_prompt(PLANS.clinica, open_trainings()) + '\nReferencia editable subordinada al catálogo:\n' + (doc?.content ?? '').slice(0, 16000) });
   } catch (err) {
     next(err);
   }

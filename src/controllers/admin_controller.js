@@ -43,19 +43,26 @@ const get_funnel = async (req, res, next) => {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const match = { created_at: { $gte: since } };
 
-    const [by_source, by_stage, total] = await Promise.all([
+    const [by_source, by_stage, total, by_service, requests_received, qualified_requests, meetings_confirmed, contracts_won, demos_count, demos_identified] = await Promise.all([
       Lead.aggregate([{ $match: match }, { $group: { _id: '$source',       count: { $sum: 1 } } }]),
       Lead.aggregate([{ $match: match }, { $group: { _id: '$funnel_stage', count: { $sum: 1 } } }]),
       Lead.countDocuments(match),
+      Lead.aggregate([{ $match: match }, { $group: { _id: '$service_interest', count: { $sum: 1 }, requests: { $sum: { $cond: [{ $eq: ['$source', 'web_form'] }, 1, 0] } }, won: { $sum: { $cond: [{ $eq: ['$status', 'won'] }, 1, 0] } } } }]),
+      Lead.countDocuments({ ...match, source: 'web_form' }),
+      Lead.countDocuments({ ...match, source: 'web_form', status: { $in: ['qualified', 'meeting_booked', 'won'] } }),
+      Lead.countDocuments({ ...match, cal_booking_id: { $exists: true, $ne: null } }),
+      Lead.countDocuments({ ...match, status: 'won' }),
+      Lead.countDocuments({ ...match, source: 'demo_whatsapp' }),
+      Lead.countDocuments({ ...match, source: 'demo_whatsapp', funnel_stage: { $in: ['identified', 'followup', 'qualified', 'meeting_booked', 'proposal', 'won'] } }),
     ]);
 
     const stage  = Object.fromEntries(by_stage.map(s => [s._id ?? 'unknown', s.count]));
     const source = Object.fromEntries(by_source.map(s => [s._id ?? 'unknown', s.count]));
 
-    // Demos started = every lead that entered the funnel in the period.
+    // Only actual demo leads count as demos; forms have their own funnel.
     // Identified+ = gave name/business (identified, followup or won).
-    const demos_started   = total;
-    const identified      = (stage.identified ?? 0) + (stage.followup ?? 0) + (stage.won ?? 0);
+    const demos_started   = demos_count;
+    const identified      = demos_identified;
     const won             = stage.won ?? 0;
     const lost            = stage.lost ?? 0;
     const identified_rate = demos_started ? Math.round((identified / demos_started) * 100) : 0;
@@ -65,6 +72,7 @@ const get_funnel = async (req, res, next) => {
       data: {
         period: days === 30 ? 'month' : 'week',
         demos_started, identified, won, lost, identified_rate,
+        total, requests_received, qualified_requests, meetings_confirmed, contracts_won, by_service,
         by_source: source,
         by_stage:  stage,
       },
@@ -77,8 +85,14 @@ const get_funnel = async (req, res, next) => {
 // GET /api/admin/leads
 const get_leads = async (req, res, next) => {
   try {
-    const { status } = req.query;
-    const filter = status ? { status } : {};
+    const filter = {};
+    for (const key of ['status', 'source', 'service_interest']) {
+      if (typeof req.query[key] === 'string' && req.query[key].length < 60) filter[key] = req.query[key];
+    }
+    if (typeof req.query.search === 'string' && req.query.search.trim()) {
+      const term = req.query.search.trim().slice(0, 100).split('').map(char => /[a-zA-Z0-9áéíóúñü @_-]/.test(char) ? char : '\\' + char).join('');
+      filter.$or = ['name', 'company', 'email', 'contact_id'].map(key => ({ [key]: { $regex: term, $options: 'i' } }));
+    }
     const { page, limit, skip } = clamp_pagination(req.query);
 
     const [leads, total] = await Promise.all([
@@ -96,10 +110,10 @@ const get_leads = async (req, res, next) => {
 const update_lead = async (req, res, next) => {
   try {
     const { lead_id } = req.params;
-    const { status, funnel_stage } = req.body;
+    const { status, funnel_stage, internal_notes } = req.body;
 
     const allowed_statuses = ['new', 'in_conversation', 'qualified', 'meeting_booked', 'won', 'lost'];
-    const allowed_stages   = ['demo_started', 'identified', 'followup', 'won', 'lost'];
+    const allowed_stages   = ['request_received', 'demo_started', 'identified', 'followup', 'qualified', 'meeting_booked', 'proposal', 'won', 'lost'];
 
     const update = {};
     if (status !== undefined) {
@@ -114,11 +128,28 @@ const update_lead = async (req, res, next) => {
       }
       update.funnel_stage = funnel_stage;
     }
+    if (internal_notes !== undefined) {
+      if (typeof internal_notes !== 'string' || internal_notes.length > 4000) return res.status(400).json({ success: false, message: 'Notas no válidas' });
+      update.internal_notes = internal_notes.trim();
+    }
+    const status_stage = { won: 'won', lost: 'lost', qualified: 'qualified', meeting_booked: 'meeting_booked' };
+    if (status_stage[status]) update.funnel_stage = status_stage[status];
+    else if (status !== undefined) {
+      const previous = await Lead.findById(lead_id);
+      update.funnel_stage = previous?.source === 'web_form' ? 'request_received' : 'identified';
+    }
+    if (funnel_stage !== undefined && status === undefined) {
+      update.status = { request_received: 'new', demo_started: 'in_conversation', identified: 'in_conversation', followup: 'in_conversation', qualified: 'qualified', meeting_booked: 'meeting_booked', proposal: 'qualified', won: 'won', lost: 'lost' }[funnel_stage];
+    }
+    if (funnel_stage === 'won' || funnel_stage === 'lost') {
+      if (status && status !== funnel_stage) return res.status(400).json({ success: false, message: 'Estado y etapa incompatibles' });
+      update.status = funnel_stage;
+    }
     if (Object.keys(update).length === 0) {
       return res.status(400).json({ success: false, message: 'Nada que actualizar' });
     }
 
-    const lead = await Lead.findByIdAndUpdate(lead_id, update, { new: true }).select('-chat_history');
+    const lead = await Lead.findByIdAndUpdate(lead_id, update, { new: true, runValidators: true }).select('-chat_history');
 
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });

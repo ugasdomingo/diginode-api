@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import Lead from '../models/lead_model.js';
 import PageView from '../models/pageview_model.js';
 
 // ── Anonimización ───────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ const is_public_path = (path) =>
 // ── Registro ────────────────────────────────────────────────────────────────
 
 const record_view = async ({ path, referrer, session_id, ip, user_agent }) => {
-  if (!is_public_path(path) || !session_id) return null;
+  if (!is_public_path(path) || typeof session_id !== 'string' || session_id.length > 100) return null;
 
   // La ruta se guarda sin parámetros: ?session_id=… de Stripe jamás debe acabar aquí.
   const clean_path = path.split('?')[0].split('#')[0];
@@ -74,7 +75,7 @@ const record_view = async ({ path, referrer, session_id, ip, user_agent }) => {
 // Segundo aviso, al salir de la página: cuánto tiempo estuvo visible.
 // Se aplica sobre la visita más reciente de esa pestaña y esa ruta.
 const record_duration = async ({ session_id, path, seconds }) => {
-  if (!session_id || !is_public_path(path)) return null;
+  if (typeof session_id !== 'string' || session_id.length > 100 || !is_public_path(path)) return null;
 
   const clean_path = path.split('?')[0].split('#')[0];
   // Tope de 2 horas: una pestaña olvidada abierta no debe inflar la media.
@@ -89,7 +90,7 @@ const record_duration = async ({ session_id, path, seconds }) => {
 
 // Hito de conversión sobre la visita en curso.
 const record_event = async ({ session_id, path, event }) => {
-  if (!session_id || !['checkout_click', 'purchase'].includes(event)) return null;
+  if (typeof session_id !== 'string' || session_id.length > 100 || !['checkout_click', 'purchase', 'lead_cta_click', 'lead_submit_success', 'demo_start', 'booking_click', 'web_project_click', 'digital_clinic_click'].includes(event)) return null;
 
   const clean_path = (path ?? '').split('?')[0].split('#')[0];
 
@@ -106,7 +107,7 @@ const get_summary = async ({ days = 30 } = {}) => {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const match = { created_at: { $gte: since } };
 
-  const [totals, by_day, by_path, by_source, by_device, funnel] = await Promise.all([
+  const [totals, by_day, by_path, by_source, by_device, funnel, by_offer, business_funnel] = await Promise.all([
     PageView.aggregate([
       { $match: match },
       {
@@ -189,6 +190,8 @@ const get_summary = async ({ days = 30 } = {}) => {
         },
       },
     ]),
+    PageView.aggregate([{ $match: { ...match, path: { $in: ['/', '/clinica-digital', '/webs-y-aplicaciones'] } } }, { $group: { _id: '$path', views: { $sum: 1 }, cta_clicks: { $sum: { $cond: [{ $in: ['lead_cta_click', '$events'] }, 1, 0] } }, submitted_events: { $sum: { $cond: [{ $in: ['lead_submit_success', '$events'] }, 1, 0] } }, demos: { $sum: { $cond: [{ $in: ['demo_start', '$events'] }, 1, 0] } }, booking_clicks: { $sum: { $cond: [{ $in: ['booking_click', '$events'] }, 1, 0] } } } }]),
+    Lead.aggregate([{ $match: match }, { $group: { _id: '$service_interest', requests: { $sum: { $cond: [{ $eq: ['$source', 'web_form'] }, 1, 0] } }, qualified: { $sum: { $cond: [{ $and: [{ $eq: ['$source', 'web_form'] }, { $in: ['$status', ['qualified', 'meeting_booked', 'won']] }] }, 1, 0] } }, confirmed_meetings: { $sum: { $cond: [{ $ifNull: ['$cal_booking_id', false] }, 1, 0] } }, won: { $sum: { $cond: [{ $eq: ['$status', 'won'] }, 1, 0] } } } }]),
   ]);
 
   const t = totals[0] ?? {};
@@ -197,6 +200,7 @@ const get_summary = async ({ days = 30 } = {}) => {
 
   return {
     range_days: days,
+    by_offer, business_funnel,
     totals: {
       views:        t.views ?? 0,
       visitors:     t.visitors?.length ?? 0,

@@ -1,11 +1,13 @@
 import { z } from 'zod';
-
-// POST /api/demo/message — public demo of Nora. Bound tightly (unauthenticated).
+export const demo_contact = z
+  .string()
+  .regex(/^demo-[a-zA-Z0-9-]{8,100}$/, 'Identificador de demo no válido');
 export const demo_message_schema = z.object({
-  contact_id:  z.string().trim().min(1).max(128),
-  // Por defecto 'website': la demo de Nora se usa desde la web. Asumir
-  // 'whatsapp' hacía que meses de tráfico web se contabilizaran como WhatsApp.
-  platform:    z.enum(['whatsapp', 'instagram', 'website']).optional().default('website'),
-  message:     z.string().trim().min(1, 'Mensaje vacío').max(2000),
+  contact_id: demo_contact,
+  platform: z.literal('website').optional().default('website'),
+  message: z.string().trim().min(1).max(2000),
   sender_name: z.string().trim().max(100).optional(),
+  context: z.enum(['agency', 'clinic', 'web']).optional().default('clinic'),
+  supports_confirmation: z.boolean().optional().default(false),
 });
+export const demo_confirm_schema = z.object({ contact_id: demo_contact, action_id: z.uuid() });

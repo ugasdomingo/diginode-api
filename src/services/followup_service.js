@@ -13,6 +13,9 @@ export const run_followups = async () => {
 
   const candidates = await Lead.find({
     funnel_stage: { $in: ['identified', 'followup'] },
+    marketing_authorized_at: { $type: 'date' },
+    marketing_offer: 'digital_clinic',
+    service_interest: 'digital_clinic',
     email:        { $exists: true, $ne: null },
     followup_step: { $lt: STEP_DAYS.length },
   });

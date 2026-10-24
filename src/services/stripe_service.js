@@ -133,7 +133,7 @@ const create_clinica_checkout_session = async () => {
         quantity: 1,
       },
     ],
-    success_url:       `${base}/?compra=ok`,
+    success_url:       `${base}${process.env.CLINICA_RETURN_PATH === '/clinica-digital' ? '/clinica-digital' : '/'}?compra=pendiente`,
     cancel_url:        `${base}/`,
     locale:            'es',
     metadata:          { type: 'clinica' },

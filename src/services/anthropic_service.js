@@ -1,3 +1,4 @@
+import { record_demo_usage } from './demo_guard_service.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { record_usage } from './usage_service.js';
 
@@ -27,13 +28,14 @@ const MAX_ITERATIONS = 10; // safety cap on the tool-use loop
  *                                         metered against the client's monthly quota.
  * @returns {Promise<string>} Final text response from the assistant
  */
-const run_turn = async ({ employee = 'default', system, messages, tools = [], tool_executor, client_id = null }) => {
+const run_turn = async ({ employee = 'default', system, messages, tools = [], tool_executor, client_id = null, is_demo = false, max_iterations = MAX_ITERATIONS }) => {
   const model = MODELS[employee] ?? MODELS.default;
 
   let current_messages = [...messages];
   let iterations = 0;
   let acc_in = 0;
   let acc_out = 0;
+  let demo_tool_calls = 0;
 
   // Records this turn's accumulated token usage (+1 message) and returns the text.
   const finalize = async (text) => {
@@ -41,7 +43,8 @@ const run_turn = async ({ employee = 'default', system, messages, tools = [], to
     return text;
   };
 
-  while (iterations < MAX_ITERATIONS) {
+  try {
+  while (iterations < max_iterations) {
     iterations++;
 
     const response = await anthropic.messages.create({
@@ -57,7 +60,7 @@ const run_turn = async ({ employee = 'default', system, messages, tools = [], to
       ],
       messages: current_messages,
       tools: tools.length > 0 ? tools : undefined,
-    });
+    }, is_demo ? { timeout: 20000, maxRetries: 0 } : undefined);
 
     acc_in  += response.usage?.input_tokens  ?? 0;
     acc_out += response.usage?.output_tokens ?? 0;
@@ -78,7 +81,8 @@ const run_turn = async ({ employee = 'default', system, messages, tools = [], to
 
         let tool_output;
         try {
-          tool_output = await tool_executor(block.name, block.input);
+          if (is_demo && demo_tool_calls++ >= 2) tool_output = { error: 'Límite de herramientas de esta demostración. Ofrece contacto humano.' };
+          else tool_output = await tool_executor(block.name, block.input);
         } catch (err) {
           tool_output = { error: err.message ?? 'Tool execution failed' };
         }
@@ -110,6 +114,7 @@ const run_turn = async ({ employee = 'default', system, messages, tools = [], to
   }
 
   return finalize('Lo siento, no pude completar la solicitud en este momento.');
+  } finally { if (is_demo) await record_demo_usage({ input_tokens: acc_in, output_tokens: acc_out }); }
 };
 
 export { run_turn, MODELS };

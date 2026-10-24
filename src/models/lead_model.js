@@ -15,6 +15,31 @@ const chat_message_schema = new mongoose.Schema(
 
 const lead_schema = new mongoose.Schema(
   {
+    booking_review_ids: { type: [String], default: undefined },
+    company: String,
+    website: String,
+    service_interest: { type: String, enum: ['brand_management', 'web_project', 'digital_clinic', 'undecided'] },
+    requested_scale: { type: String, enum: ['micro', 'sme', 'pending'] },
+    goal: String,
+    budget_range: String,
+    landing_path: String,
+    attribution: { channel: String, campaign: String },
+    request_id: String,
+    request_hash: String,
+    request_received_at: Date,
+    demo_started_at: Date,
+    privacy_version: String,
+    privacy_shown_at: Date,
+    privacy_acknowledged: Boolean,
+    notification_status: { type: String, enum: ['pending', 'sent'] },
+    notification_attempts: { type: Number, default: 0 },
+    notification_lock_until: Date,
+    internal_notes: { type: String, maxlength: 4000 },
+    marketing_authorized_at: Date,
+    marketing_offer: String,
+    demo_turns: Number,
+    demo_lock_until: Date,
+    demo_lock_token: String,
     // Unique identifier from the platform (e.g. WhatsApp phone number, IG user ID)
     contact_id: {
       type: String,
@@ -60,7 +85,7 @@ const lead_schema = new mongoose.Schema(
     // Funnel position, tracked independently from the sales `status` above.
     funnel_stage: {
       type: String,
-      enum: ['demo_started', 'identified', 'followup', 'won', 'lost'],
+      enum: ['request_received', 'demo_started', 'identified', 'followup', 'qualified', 'meeting_booked', 'proposal', 'won', 'lost'],
       default: 'demo_started',
     },
     // Follow-up sequence progress (F3-5): 0 = none sent, up to 4.
@@ -88,6 +113,10 @@ const lead_schema = new mongoose.Schema(
 
 // Ensure one lead per contact per platform
 lead_schema.index({ contact_id: 1, platform: 1 }, { unique: true });
+
+lead_schema.index({ request_id: 1 }, { unique: true, partialFilterExpression: { request_id: { $type: 'string' } } });
+lead_schema.index({ service_interest: 1, source: 1, status: 1, created_at: -1 });
+lead_schema.index({ notification_status: 1 });
 
 const Lead = mongoose.model('Lead', lead_schema);
 

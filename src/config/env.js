@@ -25,6 +25,7 @@ const secret_vars = {
 };
 
 const validate_env = () => {
+  if (process.env.DEMO_DAILY_LIMIT && (!Number.isInteger(Number(process.env.DEMO_DAILY_LIMIT)) || Number(process.env.DEMO_DAILY_LIMIT) < 1)) throw new Error('DEMO_DAILY_LIMIT must be a positive integer');
   const missing = required_vars.filter((key) => !process.env[key]);
   if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);

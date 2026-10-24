@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.js\"",
     "lab": "node src/local_lab_server.js",
-    "lab:test": "vitest run tests/operations.test.js"
+    "lab:test": "vitest run tests/operations.test.js",
+    "review": "node scripts/review.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
@@ -38,6 +39,7 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.4.1",
     "globals": "^17.6.0",
+    "mongodb-memory-server": "^11.3.0",
     "nodemon": "^3.1.9",
     "prettier": "^3.8.4",
     "vitest": "^4.1.8"

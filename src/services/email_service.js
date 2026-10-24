@@ -1,3 +1,4 @@
+import { PLANS } from '../config/plans.js';
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -116,7 +117,7 @@ const FOLLOWUP_STEPS = {
     subject: 'Lo que Nora haría en tu consulta',
     body: (name) => `
       <h2>Hola ${name || ''},</h2>
-      <p>Ayer probaste a Nora. Esto es lo que haría por ti desde el día 1: contestar
+      <p>Probaste a Nora en la demo. Esto es lo que haría por ti desde el día 1: contestar
       a cada paciente en segundos, agendar tus citas en tu calendario real y filtrar
       lo que de verdad necesita tu atención.</p>
       <p>Mientras tú pasas consulta o descansas, ella atiende. ¿La ponemos a trabajar en tu clínica?</p>`,
@@ -127,7 +128,7 @@ const FOLLOWUP_STEPS = {
       <h2>Hola ${name || ''},</h2>
       <p>La Clínica Digital es tu web profesional con 3 empleados IA dentro: Nora atiende
       y agenda, Alex vigila que todo funcione y Valeria crea contenido para tus redes.
-      Profesionales como tú recuperan horas cada semana sin contratar a nadie.</p>
+      El alcance y la configuración se acuerdan para tu consulta.</p>
       <p>Si quieres, te enseño cómo quedaría configurada para tu caso concreto.</p>`,
   },
   3: {
@@ -143,7 +144,7 @@ const FOLLOWUP_STEPS = {
     subject: 'Sin permanencia — y tuya al completar 12 cuotas',
     body: (name) => `
       <h2>Hola ${name || ''},</h2>
-      <p>La Clínica Digital son <strong>150€/mes, sin permanencia</strong>: puedes cancelar
+      <p>La Clínica Digital son <strong>${PLANS.clinica.monthly}€/mes, sin permanencia</strong>: puedes cancelar
       cuando quieras. Y al completar 12 cuotas, la web y los empleados IA pasan a ser
       <strong>tuyos</strong> — tu dominio y los datos de tus pacientes lo son desde el día 1.</p>
       <p>Activo pocas clínicas al mes por capacidad de onboarding. Si la quieres este mes,
@@ -158,33 +159,21 @@ const send_followup_email = async (to, { name, step }) => {
     from: FROM,
     to,
     subject: tpl.subject,
-    html: `${tpl.body(name)}<br><p>El equipo de DigiNode</p>`,
+    html: `${tpl.body(escape_html(name))}<br><p>El equipo de Diginode</p><p>Información de Clínica Digital: https://midiginode.com/clinica-digital</p><p>Recibes esta comunicación por tu autorización para la oferta de Clínica Digital. Puedes responder a este correo para dejar de recibirla.</p>`,
   });
 };
 
 // ── Nora demo email (N3) ────────────────────────────────────────────────────
-// Email composed by Nora during the public demo. `body` is visitor-dictated, so
-// it is HTML-escaped. Carries a clear demo footer.
-const send_nora_demo_email = async (to, { subject, body, name }) => {
-  await resend.emails.send({
+// Server-authored summary; public confirmation locks recipient and content.
+const send_nora_demo_email = async (to, { subject, body, idempotency_key }) => {
+  const result = await resend.emails.send({
     from: FROM,
     to,
-    subject: subject || 'Un mensaje de Nora (DigiNode)',
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1a1a1a;">
-        <h2>Hola${name ? ' ' + escape_html(name) : ''},</h2>
-        <p>Soy <strong>Nora</strong>, la recepcionista con IA de DigiNode. Me pediste que te enviara esto:</p>
-        <blockquote style="border-left: 3px solid #1E90FF; margin: 16px 0; padding: 8px 16px; color: #333;">
-          ${escape_html(body)}
-        </blockquote>
-        <p>Si quieres una recepcionista como yo atendiendo tu consulta 24/7, estaré encantada de ayudarte.</p>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
-        <p style="font-size: 12px; color: #888;">
-          Este correo se generó desde la demo pública de DigiNode a petición tuya. Si no lo solicitaste, ignóralo.
-        </p>
-      </div>
-    `,
-  });
+    subject: subject || 'Resumen solicitado de Diginode',
+    html: '<h2>Resumen solicitado de Diginode</h2><p>' + escape_html(body) + '</p><p>Enviado tras tu confirmación en la demo. Este envío no te suscribe a publicidad. Puedes responder a este correo para solicitar atención o la supresión de tus datos.</p>',
+  }, { idempotencyKey: idempotency_key });
+  if (result.error) throw new Error('Email provider rejected delivery');
+  return result.data;
 };
 
 export {
