@@ -135,11 +135,11 @@ function aiReply(params) {
       '¿A qué dirección quieres preparar el resumen? Después tendrás que revisar y confirmar el envío.'
     );
   }
-  if (system.includes('Contexto inicial: marca'))
+  if (system.includes('Contexto inicial: departamento de marketing'))
     return result(
-      'Podemos ordenar tu marca y marketing. Para microempresa o pyme acordamos prioridades y presupuesto: propuesta según tu operación. ¿Qué te gustaría mejorar?'
+      'Podemos ser tu departamento de marketing. Para microempresa o pyme diseñamos un plan a medida. ¿Qué te gustaría mejorar?'
     );
-  if (system.includes('Contexto inicial: un proceso'))
+  if (system.includes('Contexto inicial: una empresa que necesita'))
     return result(
       'Podemos definir una web, catálogo o aplicación con alcance y validación acordados. ¿Qué proceso necesita tu equipo?'
     );
@@ -292,7 +292,7 @@ describe.skipIf(review)('public repositioning — HTTP and real ephemeral MongoD
   it('uses three Nora contexts and simulated agenda; retains one history and meters demo tokens', async () => {
     const contact_id = 'demo-' + randomUUID();
     for (const [context, expected] of [
-      ['agency', 'marca'],
+      ['agency', 'departamento de marketing'],
       ['web', 'aplicación'],
       ['clinic', 'Clínica'],
     ]) {

@@ -11,7 +11,7 @@ const conflict = () =>
 const receipt = (lead) => ({
   success: true,
   request_id: lead.request_id,
-  message: 'Solicitud recibida. Revisaremos tu caso para acordar una conversación.',
+  message: 'Solicitud recibida. Revisaremos tu negocio y te propondremos una conversación.',
   booking_url: booking_link(),
 });
 

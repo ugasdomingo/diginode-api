@@ -8,9 +8,9 @@ import { demo_error, reserve_quota } from './demo_guard_service.js';
 
 export const summary_for = (context) =>
   context === 'agency'
-    ? 'Diginode dirige y ejecuta marca y marketing para microempresas y pymes. Acordamos prioridades, presupuesto y entregas, con reunión mensual o quincenal. Propuesta según tu operación. Publicidad, producción externa y nuevos desarrollos se presupuestan aparte. Solicita una revisión en https://midiginode.com/#contacto'
+    ? 'Diginode es el departamento de marketing externo de microempresas y pymes: estrategia, marca, contenido, publicidad, web y atención en redes. Plan a medida desde 890 EUR/mes + IVA y 490 EUR de alta; pymes desde 1.890 EUR/mes y 990 EUR de alta. Inversión publicitaria y producción externa aparte. Pide tu plan en https://midiginode.com/#contacto'
     : context === 'web'
-      ? 'Diginode crea webs comerciales, catálogos con solicitud de presupuesto y aplicaciones internas. Definimos alcance, fases, validación, propiedad y mantenimiento antes de contratar. Presupuesto según alcance; proveedores y ampliaciones se acuerdan aparte. https://midiginode.com/webs-y-aplicaciones#contacto'
+      ? 'Diginode crea páginas web para vender, desde 1.900 EUR + IVA, sin obligación de contratar marketing. Definimos alcance, fases, validación, propiedad y mantenimiento antes de contratar. Las aplicaciones a medida se presupuestan aparte. https://midiginode.com/webs-y-aplicaciones#contacto'
       : `Clínica Digital de Diginode: web profesional y ${PLANS.clinica.employees_included} empleados IA por ${PLANS.clinica.monthly} EUR/mes. Consulta alcance y condiciones en https://midiginode.com/clinica-digital . La agenda de la demo es ficticia y no reserva citas.`;
 
 export async function prepare_demo_email(lead, recipient, context, supports_confirmation) {
