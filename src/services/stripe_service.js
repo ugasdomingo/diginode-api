@@ -7,8 +7,10 @@ import User from '../models/user_model.js';
 import PackageSubscription from '../models/package_subscription_model.js';
 import Payment from '../models/payment_model.js';
 import TrainingEnrollment from '../models/training_enrollment_model.js';
+import Invoice from '../models/invoice_model.js';
 import { send_welcome_email, send_suspension_email, send_training_welcome_email } from './email_service.js';
 import { notify_office_requested, notify_ops } from './ops_notify_service.js';
+import { emit_agency_event } from './agency_notify_service.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -227,6 +229,38 @@ const create_manual_checkout_session = async ({ client_id, label, amount, instal
   return { url: session.url, session_id: session.id };
 };
 
+// Agency invoice — one-off Checkout in test or live mode, whichever key is configured.
+const create_invoice_checkout_session = async ({ invoice, client }) => {
+  const base = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const amount_cents = Math.round(Number(invoice.amount_eur) * 100);
+
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    payment_method_types: ['card'],
+    customer_email: client?.email,
+    line_items: [
+      {
+        price_data: {
+          currency: 'eur',
+          product_data: { name: String(invoice.concept).slice(0, 120) },
+          unit_amount: amount_cents,
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: `${base}/portal/dashboard?factura=pagada`,
+    cancel_url: `${base}/portal/dashboard?factura=cancelada`,
+    locale: 'es',
+    metadata: {
+      type: 'agency_invoice',
+      invoice_id: String(invoice._id),
+      client_id: String(invoice.client_id),
+    },
+  });
+
+  return { url: session.url, session_id: session.id };
+};
+
 // ── Webhook event router ────────────────────────────────────────────────────
 
 const handle_stripe_event = async (event) => {
@@ -253,9 +287,10 @@ const handle_stripe_event = async (event) => {
 const handle_checkout_completed = async (session) => {
   const { type } = session.metadata ?? {};
 
-  if (type === 'clinica')       await handle_clinica_checkout(session);
-  else if (type === 'training') await handle_training_checkout(session);
-  else if (type === 'manual')   await handle_manual_checkout(session);
+  if (type === 'clinica')             await handle_clinica_checkout(session);
+  else if (type === 'training')       await handle_training_checkout(session);
+  else if (type === 'manual')         await handle_manual_checkout(session);
+  else if (type === 'agency_invoice') await handle_agency_invoice_checkout(session);
 };
 
 // Clínica Digital subscription — creates account + office with the 3 employees.
@@ -474,6 +509,70 @@ const handle_manual_checkout = async (session) => {
   });
 };
 
+// Marks the agency invoice paid only when Stripe charged the expected cents.
+const handle_agency_invoice_checkout = async (session) => {
+  const invoice = await Invoice.findById(session.metadata?.invoice_id);
+  if (!invoice || invoice.status === 'pagada' || invoice.status === 'anulada') return;
+
+  const expected = Math.round(Number(invoice.amount_eur) * 100);
+  const charged = session.amount_total ?? -1;
+  const currency = (session.currency || '').toLowerCase();
+  if (charged !== expected || (currency && currency !== 'eur')) {
+    await Invoice.updateOne(
+      { _id: invoice._id, status: { $ne: 'pagada' } },
+      { $set: { status: 'revision' } }
+    );
+    await emit_agency_event({
+      event: 'invoice.review',
+      status: 'revision',
+      title: invoice.concept,
+      client_id: invoice.client_id,
+      resource_id: invoice._id,
+    });
+    return;
+  }
+
+  const paid = await Invoice.findOneAndUpdate(
+    { _id: invoice._id, status: { $in: ['pendiente', 'borrador'] } },
+    {
+      $set: {
+        status: 'pagada',
+        paid_at: new Date(),
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent || undefined,
+      },
+    },
+    { new: true }
+  );
+  if (!paid) return;
+
+  try {
+    await Payment.create({
+      client_id: invoice.client_id,
+      payer_email: session.customer_details?.email,
+      payer_name: session.customer_details?.name,
+      stripe_session_id: session.id,
+      stripe_payment_intent_id: session.payment_intent || undefined,
+      amount: charged / 100,
+      currency: 'EUR',
+      description: invoice.concept,
+      type: 'invoice',
+      reference_slug: 'agency_invoice',
+      reference_label: String(invoice.concept).slice(0, 120),
+    });
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+  }
+
+  await emit_agency_event({
+    event: 'invoice.paid',
+    status: 'pagada',
+    title: invoice.concept,
+    client_id: invoice.client_id,
+    resource_id: invoice._id,
+  });
+};
+
 // Subscription cancelled in Stripe — also covers legacy plans still active.
 const handle_subscription_deleted = async (subscription) => {
   const sub = await PackageSubscription.findOneAndUpdate(
@@ -534,6 +633,7 @@ export {
   create_clinica_checkout_session,
   create_training_checkout_session,
   create_manual_checkout_session,
+  create_invoice_checkout_session,
   handle_training_checkout,
   handle_stripe_event,
   stripe,

@@ -8,6 +8,9 @@ const logger = pino({
     paths: [
       'password', 'password_hash', 'token', 'authorization',
       'req.headers.authorization', '*.password', '*.token', 'office_admin_token',
+      'secret', '*.secret', 'code', '*.code', 'otp', 'temporary_password',
+      'ciphertext', 'auth_tag', 'key_hash', 'api_key', 'req.body.secret',
+      'req.body.password', 'req.body.code', 'req.body.temporary_password',
     ],
     censor: '[redacted]',
   },

@@ -93,6 +93,25 @@ Ningún dato se queda ahí, pero por ellos pasan las conversaciones:
 
 ---
 
+## 7. Núcleo operativo (`/api/agency`)
+
+Sigue siendo MongoDB. No se copian los textos de las piezas ni las contraseñas de las cuentas del cliente en claro.
+
+| Qué | Colección | Notas |
+|---|---|---|
+| Pipeline y actividad del prospecto | `leads` (campos nuevos) | El `status` comercial de antes no se toca. `pipeline_status` es el embudo de la agencia. La actividad guarda resúmenes, no el mensaje entero. |
+| Marca, paquete, bot responsable, KPIs, enlaces de estrategia | `clients` | Campos opcionales. |
+| Piezas y versiones | `pieces` | El archivo vive en Drive/Docs; aquí solo el enlace. |
+| Aprobaciones y auditoría | `approvals` | Domingo y después el cliente. El comentario se queda en el audit, no sale en Slack. |
+| Informes mensuales | `clientreports` | Enlace al Google Doc. |
+| Reuniones | `meetings` | |
+| Facturas de agencia | `invoices` | El cobro lo confirma el webhook de Stripe y se copia en `payments`. |
+| Claves de bot | `apikeys` | Solo el hash. La clave en claro se enseña una vez al crearla. |
+| Código de acceso del cliente | `otpchallenges` | Solo el hash. Caduca. |
+| Caja fuerte | `credentials` | AES-256-GCM. La clave está en `CREDENTIALS_VAULT_KEY`, nunca en el repo. |
+| Quién abrió la caja fuerte | `vaultaudits` | Sin el secreto. |
+| Avisos emitidos | `agencyevents` | Una línea y un enlace. |
+
 ## Si algo deja de funcionar, mira aquí
 
 | Síntoma | Causa probable |

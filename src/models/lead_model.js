@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { ACTIVITY_TYPES, LEAD_SOURCES, PIPELINE_STATUSES } from '../agency/constants.js';
 
 // Each message in the conversation history — matches Gemini's expected format
 const chat_message_schema = new mongoose.Schema(
@@ -47,7 +48,7 @@ const lead_schema = new mongoose.Schema(
     },
     platform: {
       type: String,
-      enum: ['whatsapp', 'instagram', 'linkedin', 'website'],
+      enum: ['whatsapp', 'instagram', 'linkedin', 'website', 'agencia'],
       required: true,
     },
     name: {
@@ -79,7 +80,7 @@ const lead_schema = new mongoose.Schema(
     // Where this lead originated — used by the funnel dashboard (F3-3).
     source: {
       type: String,
-      enum: ['organic', 'ads', 'demo_whatsapp', 'web_form', 'other'],
+      enum: LEAD_SOURCES,
       default: 'other',
     },
     // Funnel position, tracked independently from the sales `status` above.
@@ -107,6 +108,42 @@ const lead_schema = new mongoose.Schema(
     cal_booking_id: {
       type: String,
     },
+    // Operational pipeline for the agency. Independent from the commercial `status`.
+    pipeline_status: {
+      type: String,
+      enum: PIPELINE_STATUSES,
+      default: 'nuevo',
+    },
+    origin_detail: { type: String, maxlength: 200 },
+    links: {
+      type: [
+        new mongoose.Schema(
+          {
+            label: { type: String, maxlength: 80 },
+            url: { type: String, maxlength: 500 },
+          },
+          { _id: false }
+        ),
+      ],
+      default: undefined,
+    },
+    next_action: { type: String, maxlength: 300 },
+    next_action_at: { type: Date },
+    activity: {
+      type: [
+        new mongoose.Schema(
+          {
+            type: { type: String, enum: ACTIVITY_TYPES, required: true },
+            summary: { type: String, maxlength: 500, required: true },
+            at: { type: Date, default: Date.now },
+            actor: { type: String, maxlength: 160 },
+          },
+          { _id: true }
+        ),
+      ],
+      default: undefined,
+    },
+    erased_at: { type: Date },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );
@@ -117,6 +154,7 @@ lead_schema.index({ contact_id: 1, platform: 1 }, { unique: true });
 lead_schema.index({ request_id: 1 }, { unique: true, partialFilterExpression: { request_id: { $type: 'string' } } });
 lead_schema.index({ service_interest: 1, source: 1, status: 1, created_at: -1 });
 lead_schema.index({ notification_status: 1 });
+lead_schema.index({ pipeline_status: 1, updated_at: -1 });
 
 const Lead = mongoose.model('Lead', lead_schema);
 

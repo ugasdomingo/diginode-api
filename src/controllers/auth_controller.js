@@ -1,5 +1,28 @@
 import User from '../models/user_model.js';
 import { sign_token } from '../utils/jwt_utils.js';
+import { issue_client_otp, resend_client_otp, verify_client_otp } from '../services/otp_service.js';
+
+const public_user = (user) => ({
+  id: user._id,
+  email: user.email,
+  role: user.role,
+  client_id: user.client_id,
+  password_change_required: user.password_change_required ?? false,
+});
+
+const session_for = (user) => {
+  const expires_in = user.role === 'admin' ? '8h' : '24h';
+  return sign_token(
+    { user_id: user._id, role: user.role, token_version: user.token_version ?? 0 },
+    expires_in
+  );
+};
+
+const otp_unavailable = (res) =>
+  res.status(503).json({
+    success: false,
+    message: 'No se pudo enviar el código de acceso. Inténtalo más tarde.',
+  });
 
 const login = async (req, res, next) => {
   try {
@@ -15,24 +38,52 @@ const login = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const expires_in = user.role === 'admin' ? '8h' : '24h';
-    const token = sign_token(
-      { user_id: user._id, role: user.role, token_version: user.token_version ?? 0 },
-      expires_in
-    );
+    // Clients need a second factor. Admins (Domingo) keep the single password step.
+    // Set CLIENT_2FA_REQUIRED=false only as a temporary rollback.
+    if (user.role === 'client' && process.env.CLIENT_2FA_REQUIRED !== 'false') {
+      try {
+        const challenge = await issue_client_otp(user);
+        res.set('Cache-Control', 'no-store');
+        return res.json({ success: true, requires_otp: true, challenge_id: challenge.challenge_id });
+      } catch (err) {
+        if (err.status_code === 503) return otp_unavailable(res);
+        throw err;
+      }
+    }
 
-    res.json({
-      success: true,
-      token,
-      user: {
-        id:                       user._id,
-        email:                    user.email,
-        role:                     user.role,
-        client_id:                user.client_id,
-        password_change_required: user.password_change_required ?? false,
-      },
-    });
+    res.json({ success: true, token: session_for(user), user: public_user(user) });
   } catch (err) {
+    next(err);
+  }
+};
+
+const verify_otp = async (req, res, next) => {
+  try {
+    const user_id = await verify_client_otp(req.body);
+    if (!user_id) {
+      return res.status(401).json({ success: false, message: 'Código no válido o caducado' });
+    }
+    const user = await User.findById(user_id);
+    if (!user || !user.is_active || user.role !== 'client') {
+      return res.status(401).json({ success: false, message: 'Código no válido o caducado' });
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, token: session_for(user), user: public_user(user) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const resend_otp = async (req, res, next) => {
+  try {
+    const challenge = await resend_client_otp(req.body.challenge_id);
+    if (!challenge) {
+      return res.status(401).json({ success: false, message: 'Código no válido o caducado' });
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, requires_otp: true, challenge_id: challenge.challenge_id });
+  } catch (err) {
+    if (err.status_code === 503) return otp_unavailable(res);
     next(err);
   }
 };
@@ -68,4 +119,4 @@ const logout_all = async (req, res, next) => {
   }
 };
 
-export { login, change_password, logout_all };
+export { login, verify_otp, resend_otp, change_password, logout_all };

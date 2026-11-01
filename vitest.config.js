@@ -18,6 +18,7 @@ export default defineConfig({
       ANTHROPIC_API_KEY: 'test',
       OPENAI_API_KEY:    'sk-test',
       AIRTABLE_API_KEY:  'test',
+      AIRTABLE_PAT:      'test',
       AIRTABLE_BASE_ID:  'test',
     },
   },

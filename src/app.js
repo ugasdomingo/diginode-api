@@ -16,6 +16,7 @@ import lead_routes from './routes/lead_routes.js';
 import demo_routes from './routes/demo_routes.js';
 import trainings_routes from './routes/trainings_routes.js';
 import analytics_routes from './routes/analytics_routes.js';
+import agency_routes from './routes/agency_routes.js';
 import error_middleware from './middleware/error_middleware.js';
 
 const app = express();
@@ -78,6 +79,7 @@ app.use('/api/clinica', clinica_routes);
 app.use('/api/demo', demo_routes);
 app.use('/api/trainings', trainings_routes);
 app.use('/api/analytics', analytics_routes);
+app.use('/api/agency', agency_routes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
