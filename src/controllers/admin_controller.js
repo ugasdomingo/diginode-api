@@ -4,6 +4,8 @@ import Payment from '../models/payment_model.js';
 import PackageSubscription from '../models/package_subscription_model.js';
 import Knowledge from '../models/knowledge_model.js';
 import { get_summary } from '../services/analytics_service.js';
+import { get_anon_summary, parse_anon_filters } from '../services/anon_analytics_service.js';
+import { purge_tracking_for_deleted_lead } from '../services/privacy_service.js';
 import TrainingEnrollment from '../models/training_enrollment_model.js';
 import { TRAININGS } from '../config/trainings.js';
 import SupportTicket from '../models/support_ticket_model.js';
@@ -96,7 +98,7 @@ const get_leads = async (req, res, next) => {
     const { page, limit, skip } = clamp_pagination(req.query);
 
     const [leads, total] = await Promise.all([
-      Lead.find(filter).select('-chat_history').sort({ created_at: -1 }).skip(skip).limit(limit),
+      Lead.find(filter).select('-chat_history -timeline').sort({ created_at: -1 }).skip(skip).limit(limit),
       Lead.countDocuments(filter),
     ]);
 
@@ -149,7 +151,7 @@ const update_lead = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Nada que actualizar' });
     }
 
-    const lead = await Lead.findByIdAndUpdate(lead_id, update, { new: true, runValidators: true }).select('-chat_history');
+    const lead = await Lead.findByIdAndUpdate(lead_id, update, { new: true, runValidators: true }).select('-chat_history -timeline');
 
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });
@@ -166,10 +168,12 @@ const update_lead = async (req, res, next) => {
 // que es dato personal del visitante: no tiene sentido conservarlo.
 const delete_lead = async (req, res, next) => {
   try {
-    const lead = await Lead.findByIdAndDelete(req.params.lead_id);
+    const lead = await Lead.findById(req.params.lead_id);
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead no encontrado' });
     }
+    await purge_tracking_for_deleted_lead(lead);
+    await lead.deleteOne();
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -399,7 +403,7 @@ const get_admin_clients = async (req, res, next) => {
     const { page, limit, skip } = clamp_pagination(req.query, { default_limit: 30 });
 
     const [clients, total] = await Promise.all([
-      Client.find(filter).sort({ created_at: -1 }).skip(skip).limit(limit),
+      Client.find(filter).select('-timeline').sort({ created_at: -1 }).skip(skip).limit(limit),
       Client.countDocuments(filter),
     ]);
 
@@ -565,7 +569,21 @@ const create_payment_link = async (req, res, next) => {
 const get_analytics = async (req, res, next) => {
   try {
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 90);
-    const data = await get_summary({ days });
+    const [data, anon] = await Promise.all([get_summary({ days }), get_anon_summary({ days })]);
+    res.json({ success: true, data: { ...data, anon } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/admin/analytics/anon — contadores sin identificadores, con filtros.
+const get_anon_analytics = async (req, res, next) => {
+  try {
+    const parsed = parse_anon_filters(req.query);
+    if (!parsed.ok) {
+      return res.status(400).json({ success: false, message: 'Filtro de analítica no válido.' });
+    }
+    const data = await get_anon_summary(parsed.value);
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -675,6 +693,7 @@ export {
   create_payment_link,
   get_offices_health,
   get_analytics,
+  get_anon_analytics,
   get_admin_trainings,
   delete_training_enrollment,
   delete_lead,

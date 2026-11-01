@@ -54,10 +54,31 @@ const pageview_schema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    // Hitos de la landing: 'checkout_click' al pulsar comprar, 'purchase' al
-    // confirmarse el pago. Vacío en una visita normal.
+    // Hitos de la landing y de contacto. La ubicación del contacto, si la hay,
+    // va en contact_locations y no sustituye a este array: el embudo sigue
+    // buscando el nombre del evento aquí.
     events: {
       type: [String],
+      default: [],
+    },
+    contact_locations: {
+      type: [
+        new mongoose.Schema(
+          {
+            event: {
+              type: String,
+              enum: ['contact_call_click', 'contact_whatsapp_click', 'contact_form_submit'],
+              required: true,
+            },
+            location: {
+              type: String,
+              enum: ['header', 'fab', 'contact_section', 'footer', 'nora'],
+              required: true,
+            },
+          },
+          { _id: false }
+        ),
+      ],
       default: [],
     },
     created_at: {

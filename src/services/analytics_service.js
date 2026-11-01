@@ -1,6 +1,14 @@
 import { createHash } from 'crypto';
 import Lead from '../models/lead_model.js';
 import PageView from '../models/pageview_model.js';
+import { record_consent_visit } from './consent_visit_service.js';
+import {
+  ALLOWED_EVENTS,
+  CONTACT_EVENTS,
+  CONTACT_LOCATIONS,
+  CONTACT_TYPE_BY_EVENT,
+  is_public_path,
+} from './measurement_fields.js';
 
 // ── Anonimización ───────────────────────────────────────────────────────────
 
@@ -46,30 +54,35 @@ const classify_device = (user_agent = '') => {
   return 'escritorio';
 };
 
-// Sólo se miden páginas públicas. El panel de cliente y el de admin no se tocan.
-const PRIVATE_PREFIXES = ['/portal', '/admin', '/login', '/cambiar-contrasena'];
-
-const is_public_path = (path) =>
-  typeof path === 'string' &&
-  path.startsWith('/') &&
-  path.length <= 200 &&
-  !PRIVATE_PREFIXES.some((p) => path.startsWith(p));
-
 // ── Registro ────────────────────────────────────────────────────────────────
 
-const record_view = async ({ path, referrer, session_id, ip, user_agent }) => {
+// Ubicación sólo en los hitos de contacto, y sólo si está en la lista cerrada.
+const normalize_event_location = (event, location) => {
+  if (!ALLOWED_EVENTS.includes(event)) return null;
+  const omitted = location === undefined || location === null || location === '';
+  if (omitted) return { event, location: null };
+  if (typeof location !== 'string' || !CONTACT_LOCATIONS.includes(location)) return null;
+  if (!CONTACT_EVENTS.includes(event)) return null;
+  return { event, location };
+};
+
+const record_view = async ({ path, referrer, session_id, ip, user_agent, visitor_id }) => {
   if (!is_public_path(path) || typeof session_id !== 'string' || session_id.length > 100) return null;
 
   // La ruta se guarda sin parámetros: ?session_id=… de Stripe jamás debe acabar aquí.
   const clean_path = path.split('?')[0].split('#')[0];
 
-  return PageView.create({
+  const saved = await PageView.create({
     visitor_hash: hash_visitor(ip, user_agent),
     session_id,
     path: clean_path,
     source: classify_source(referrer),
     device: classify_device(user_agent),
   });
+
+  // La copia con cookie no hereda la IP ni el user-agent: vive en otra colección.
+  await record_consent_visit({ visitor_id, type: 'pageview', path: clean_path });
+  return saved;
 };
 
 // Segundo aviso, al salir de la página: cuánto tiempo estuvo visible.
@@ -88,26 +101,74 @@ const record_duration = async ({ session_id, path, seconds }) => {
   );
 };
 
-// Hito de conversión sobre la visita en curso.
-const record_event = async ({ session_id, path, event }) => {
-  if (typeof session_id !== 'string' || session_id.length > 100 || !['checkout_click', 'purchase', 'lead_cta_click', 'lead_submit_success', 'demo_start', 'booking_click', 'web_project_click', 'digital_clinic_click'].includes(event)) return null;
+// Hito de conversión sobre la visita en curso. `visitor_id` es la cookie propia
+// dn_vid: si viene y es un UUID v4, el hito se guarda también aparte, sin IP.
+const record_event = async ({ session_id, path, event, location, visitor_id }) => {
+  if (typeof session_id !== 'string' || session_id.length > 100) return null;
+  const accepted = normalize_event_location(event, location);
+  if (!accepted) return null;
 
   const clean_path = (path ?? '').split('?')[0].split('#')[0];
+  const update = { $addToSet: { events: accepted.event } };
+  if (accepted.location) {
+    update.$addToSet.contact_locations = { event: accepted.event, location: accepted.location };
+  }
 
-  return PageView.findOneAndUpdate(
+  const saved = await PageView.findOneAndUpdate(
     { session_id, ...(is_public_path(clean_path) ? { path: clean_path } : {}) },
-    { $addToSet: { events: event } },
+    update,
     { sort: { created_at: -1 } }
   );
+
+  await record_consent_visit({
+    visitor_id,
+    type: CONTACT_TYPE_BY_EVENT[accepted.event] ? 'contact_click' : accepted.event,
+    event: accepted.event,
+    path: clean_path,
+    contact_type: CONTACT_TYPE_BY_EVENT[accepted.event] || '',
+    location: accepted.location || '',
+  });
+  return saved;
 };
 
 // ── Consulta para el panel ──────────────────────────────────────────────────
+
+const contact_breakdown = async (match) => {
+  const names = ['contact_call_click', 'contact_whatsapp_click', 'contact_form_submit'];
+  const [events, locations] = await Promise.all([
+    PageView.aggregate([
+      { $match: { ...match, events: { $in: names } } },
+      { $unwind: '$events' },
+      { $match: { events: { $in: names } } },
+      { $group: { _id: '$events', count: { $sum: 1 } } },
+    ]),
+    PageView.aggregate([
+      { $match: match },
+      { $unwind: '$contact_locations' },
+      {
+        $group: {
+          _id: { event: '$contact_locations.event', location: '$contact_locations.location' },
+          count: { $sum: 1 },
+        },
+      },
+      { $project: { _id: 0, event: '$_id.event', location: '$_id.location', count: 1 } },
+      { $sort: { count: -1 } },
+    ]),
+  ]);
+  const count_of = (name) => events.find((row) => row._id === name)?.count ?? 0;
+  return {
+    call_clicks: count_of('contact_call_click'),
+    whatsapp_clicks: count_of('contact_whatsapp_click'),
+    form_submits: count_of('contact_form_submit'),
+    by_location: locations,
+  };
+};
 
 const get_summary = async ({ days = 30 } = {}) => {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const match = { created_at: { $gte: since } };
 
-  const [totals, by_day, by_path, by_source, by_device, funnel, by_offer, business_funnel] = await Promise.all([
+  const [totals, by_day, by_path, by_source, by_device, funnel, by_offer, business_funnel, contact_events] = await Promise.all([
     PageView.aggregate([
       { $match: match },
       {
@@ -192,6 +253,7 @@ const get_summary = async ({ days = 30 } = {}) => {
     ]),
     PageView.aggregate([{ $match: { ...match, path: { $in: ['/', '/clinica-digital', '/webs-y-aplicaciones'] } } }, { $group: { _id: '$path', views: { $sum: 1 }, cta_clicks: { $sum: { $cond: [{ $in: ['lead_cta_click', '$events'] }, 1, 0] } }, submitted_events: { $sum: { $cond: [{ $in: ['lead_submit_success', '$events'] }, 1, 0] } }, demos: { $sum: { $cond: [{ $in: ['demo_start', '$events'] }, 1, 0] } }, booking_clicks: { $sum: { $cond: [{ $in: ['booking_click', '$events'] }, 1, 0] } } } }]),
     Lead.aggregate([{ $match: match }, { $group: { _id: '$service_interest', requests: { $sum: { $cond: [{ $eq: ['$source', 'web_form'] }, 1, 0] } }, qualified: { $sum: { $cond: [{ $and: [{ $eq: ['$source', 'web_form'] }, { $in: ['$status', ['qualified', 'meeting_booked', 'won']] }] }, 1, 0] } }, confirmed_meetings: { $sum: { $cond: [{ $ifNull: ['$cal_booking_id', false] }, 1, 0] } }, won: { $sum: { $cond: [{ $eq: ['$status', 'won'] }, 1, 0] } } } }]),
+    contact_breakdown(match),
   ]);
 
   const t = totals[0] ?? {};
@@ -211,6 +273,7 @@ const get_summary = async ({ days = 30 } = {}) => {
     by_path:   by_path.map((p) => ({ ...p, avg_seconds: Math.round(p.avg_seconds) })),
     by_source,
     by_device,
+    contact_events,
     landing_funnel: {
       views:            landing_views,
       visitors:         f.visitors?.length ?? 0,
@@ -222,4 +285,13 @@ const get_summary = async ({ days = 30 } = {}) => {
   };
 };
 
-export { record_view, record_duration, record_event, get_summary, classify_source, classify_device, is_public_path };
+export {
+  record_view,
+  record_duration,
+  record_event,
+  get_summary,
+  classify_source,
+  classify_device,
+  is_public_path,
+  normalize_event_location,
+};

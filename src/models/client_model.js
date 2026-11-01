@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { journey_paths } from './journey_fields.js';
 
 // Employees available across all plans
 const VALID_EMPLOYEES = ['recepcionista', 'asistente', 'gestor-relaciones', 'content-manager'];
@@ -111,9 +112,12 @@ const client_schema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Lead',
     },
+    ...journey_paths(),
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );
+
+client_schema.index({ visitor_id: 1 }, { sparse: true });
 
 const Client = mongoose.model('Client', client_schema);
 

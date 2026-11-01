@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import Lead from '../models/lead_model.js';
 import { PRIVACY_VERSION, booking_link } from '../config/services.js';
 import { notify_ops } from './ops_notify_service.js';
+import { attach_journey_if_consented } from './journey_service.js';
 
 const conflict = () =>
   Object.assign(
@@ -54,7 +55,9 @@ export async function capture_lead(input) {
     throw Object.assign(new Error('Actualiza la página para consultar el aviso vigente.'), {
       status_code: 409,
     });
-  const { honeypot: _honeypot, ...content } = input;
+  const { honeypot: _honeypot, journey_consent, journey, visitor_id, ...content } = input;
+  // El hash de idempotencia no incluye el recorrido: sin consentimiento esos
+  // campos se ignoran y no deben cambiar la identidad de la solicitud.
   const request_hash = createHash('sha256').update(JSON.stringify(content)).digest('hex');
   let lead = await Lead.findOne({ request_id: input.request_id });
   if (!lead) {
@@ -79,6 +82,9 @@ export async function capture_lead(input) {
     }
   }
   if (lead.request_hash !== request_hash) throw conflict();
+  if (journey_consent?.accepted === true) {
+    lead = await attach_journey_if_consented(lead, { journey_consent, journey, visitor_id });
+  }
   try {
     await notify_lead(lead);
   } catch {
