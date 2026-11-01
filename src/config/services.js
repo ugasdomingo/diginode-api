@@ -1,6 +1,8 @@
 import { PLANS } from './plans.js';
 
 export const PRIVACY_VERSION = '2026-10';
+export const WHATSAPP_URL = 'https://wa.me/34604822385';
+export const TELEGRAM_URL = 'https://t.me/+34604822385';
 export const SERVICE_IDS = ['brand_management', 'web_project', 'digital_clinic', 'undecided'];
 export const SERVICES = [
   {
@@ -73,6 +75,7 @@ export function demo_actions(context = 'clinic') {
       href: contact,
     },
   ];
+  actions.push({ type: 'direct', label: 'Escribir por WhatsApp', href: WHATSAPP_URL });
   const booking = booking_link();
   if (booking)
     actions.push({ type: 'booking', label: 'Concertar una reunión real', href: booking });
