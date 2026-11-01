@@ -49,7 +49,8 @@ app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 app.use('/api/analytics', express.json({ type: ['application/json', 'text/plain'], limit: '4kb' }));
 
 // JSON parsing for all other routes — cap body size to blunt memory-exhaustion payloads
-app.use('/api/leads', express.json({ limit: '8kb' }));
+// El formulario puede traer el recorrido consentido (hasta 200 eventos).
+app.use('/api/leads', express.json({ limit: '64kb' }));
 app.use('/api/demo', express.json({ limit: '8kb' }));
 app.use(express.json({ limit: '1mb' }));
 
@@ -61,7 +62,11 @@ const global_limiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path.startsWith('/api/webhooks'),
+  skip: (req) => {
+    const path = (req.originalUrl || req.path || '').split('?')[0];
+    // La medición anónima lleva su propio tope, que no almacena IPs.
+    return path.startsWith('/api/webhooks') || path === '/api/analytics/anon';
+  },
 });
 app.use(global_limiter);
 

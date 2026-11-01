@@ -1,5 +1,6 @@
-import Client from '../models/client_model.js';
 import Lead from '../models/lead_model.js';
+import Client from '../models/client_model.js';
+import { copy_journey_to_client } from './journey_service.js';
 
 // Called when Cal.com fires BOOKING_CREATED
 const handle_meeting_booked = async ({ booking_id, attendee_email, attendee_name }) => {
@@ -46,11 +47,14 @@ const convert_lead_to_client = async (lead_id, client_data) => {
     throw err;
   }
 
-  const client = await Client.create({
-    ...client_data,
-    lead_id: lead._id,
-    status:  'pending',
-  });
+  const client = await copy_journey_to_client(
+    lead,
+    await Client.create({
+      ...client_data,
+      lead_id: lead._id,
+      status:  'pending',
+    })
+  );
 
   lead.status = 'won';
   lead.funnel_stage = 'won';

@@ -30,10 +30,18 @@ import {
   create_payment_link,
   get_offices_health,
   get_analytics,
+  get_anon_analytics,
   get_admin_trainings,
   delete_training_enrollment,
   delete_lead,
 } from '../controllers/admin_controller.js';
+import {
+  erase_client_privacy,
+  erase_lead_privacy,
+  erase_visitor_privacy,
+  export_client_privacy,
+  export_lead_privacy,
+} from '../controllers/privacy_controller.js';
 
 const router = Router();
 
@@ -41,7 +49,13 @@ const router = Router();
 router.use(authenticate, require_role('admin'));
 
 router.get('/dashboard', get_dashboard);
+router.get('/analytics/anon', get_anon_analytics);
 router.get('/analytics', get_analytics);
+router.get('/privacy/leads/:lead_id/export', validate_object_id('lead_id'), export_lead_privacy);
+router.get('/privacy/clients/:client_id/export', validate_object_id('client_id'), export_client_privacy);
+router.delete('/privacy/leads/:lead_id', validate_object_id('lead_id'), erase_lead_privacy);
+router.delete('/privacy/clients/:client_id', validate_object_id('client_id'), erase_client_privacy);
+router.delete('/privacy/visitors/:visitor_id', erase_visitor_privacy);
 router.get('/trainings', get_admin_trainings);
 router.delete('/trainings/enrollments/:enrollment_id', validate_object_id('enrollment_id'), delete_training_enrollment);
 router.get('/funnel', get_funnel);

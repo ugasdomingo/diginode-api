@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { journey_paths } from './journey_fields.js';
 
 // Each message in the conversation history — matches Gemini's expected format
 const chat_message_schema = new mongoose.Schema(
@@ -107,6 +108,7 @@ const lead_schema = new mongoose.Schema(
     cal_booking_id: {
       type: String,
     },
+    ...journey_paths(),
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );
@@ -117,6 +119,7 @@ lead_schema.index({ contact_id: 1, platform: 1 }, { unique: true });
 lead_schema.index({ request_id: 1 }, { unique: true, partialFilterExpression: { request_id: { $type: 'string' } } });
 lead_schema.index({ service_interest: 1, source: 1, status: 1, created_at: -1 });
 lead_schema.index({ notification_status: 1 });
+lead_schema.index({ visitor_id: 1 }, { sparse: true });
 
 const Lead = mongoose.model('Lead', lead_schema);
 
