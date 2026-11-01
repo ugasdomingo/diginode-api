@@ -111,6 +111,44 @@ const client_schema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Lead',
     },
+    // Agency profile. All optional: filled over time, never required to create the client.
+    service_package: { type: String, trim: true, maxlength: 120 },
+    account_manager_bot: { type: String, trim: true, maxlength: 80 },
+    brand: {
+      name: { type: String, trim: true, maxlength: 120 },
+      voice: { type: String, trim: true, maxlength: 1000 },
+      sector: { type: String, trim: true, maxlength: 80 },
+      city: { type: String, trim: true, maxlength: 80 },
+      logo_url: { type: String, trim: true, maxlength: 500 },
+      notes: { type: String, trim: true, maxlength: 2000 },
+    },
+    kpis: {
+      type: [
+        new mongoose.Schema(
+          {
+            name: { type: String, maxlength: 80 },
+            value: { type: String, maxlength: 40 },
+            unit: { type: String, maxlength: 20 },
+            period: { type: String, maxlength: 40 },
+            updated_at: Date,
+          },
+          { _id: false }
+        ),
+      ],
+      default: undefined,
+    },
+    strategy_links: {
+      type: [
+        new mongoose.Schema(
+          {
+            label: { type: String, maxlength: 80 },
+            url: { type: String, maxlength: 500 },
+          },
+          { _id: false }
+        ),
+      ],
+      default: undefined,
+    },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );

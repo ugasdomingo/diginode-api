@@ -43,7 +43,7 @@ const payment_schema = new mongoose.Schema(
     // What kind of purchase this is
     type: {
       type: String,
-      enum: ['course', 'bolsa', 'subscription', 'manual'],
+      enum: ['course', 'bolsa', 'subscription', 'manual', 'invoice'],
     },
     // Slug of the related entity (course slug, 'bolsa', package slug, or custom label)
     reference_slug: {
