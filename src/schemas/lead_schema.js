@@ -1,5 +1,23 @@
 import { z } from 'zod';
 import { SERVICE_IDS } from '../config/services.js';
+import { QUESTIONNAIRE } from '../config/questionnaire.js';
+
+const one = (key) => z.enum(QUESTIONNAIRE[key]).optional();
+const many = (key) => z.array(z.enum(QUESTIONNAIRE[key])).max(QUESTIONNAIRE[key].length).optional();
+export const questionnaire_schema = z.object({
+  sector: one('sector'),
+  employees: one('employees'),
+  locations: one('locations'),
+  revenue: one('revenue'),
+  country: one('country'),
+  reasons: many('reasons'),
+  channels: many('channels'),
+  marketing_spend: one('marketing_spend'),
+  new_clients: one('new_clients'),
+  web_goals: many('web_goals'),
+  brand_identity: one('brand_identity'),
+  deadline: one('deadline'),
+});
 
 export const lead_schema = z
   .object({
@@ -22,7 +40,9 @@ export const lead_schema = z
       ])
       .optional()
       .default(''),
-    goal: z.string().trim().min(10).max(2000),
+    goal: z.union([z.literal(''), z.string().trim().min(10).max(2000)]).optional().default(''),
+    phone: z.string().trim().max(30).optional().default(''),
+    questionnaire: questionnaire_schema.optional(),
     budget_range: z
       .enum([
         'pending',

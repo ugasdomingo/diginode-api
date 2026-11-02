@@ -41,6 +41,7 @@ import { PLANS } from '../src/config/plans.js';
 import { NORA_DEMO_KB } from '../src/config/nora_kb.js';
 import { capture_lead, retry_lead_notifications } from '../src/services/lead_capture_service.js';
 import { prepare_demo_email } from '../src/services/demo_email_service.js';
+import { create_proposal } from '../src/services/proposal_service.js';
 import {
   acquire_demo,
   release_demo,
@@ -311,7 +312,7 @@ describe.skipIf(review)('public repositioning — HTTP and real ephemeral MongoD
         context === 'web'
           ? '/webs-y-aplicaciones#contacto'
           : context === 'clinic'
-            ? '/clinica-digital#contacto'
+            ? '/clinica-digital#demo-nora'
             : '/#contacto'
       );
     }
@@ -526,6 +527,7 @@ describe.skipIf(review)('public repositioning — HTTP and real ephemeral MongoD
     expect(result.status).toBe(200);
     const params = create.mock.calls[0][0];
     expect(params.line_items[0].price_data.unit_amount).toBe(PLANS.clinica.monthly * 100);
+    expect(params.line_items[1].price_data.unit_amount).toBe(PLANS.clinica.setup * 100);
     expect(params.success_url).toContain('/clinica-digital?compra=pendiente');
     process.env.CLINICA_RETURN_PATH = '/';
     await request('/api/clinica/checkout', { method: 'POST' });
@@ -549,7 +551,7 @@ describe.skipIf(review)('public repositioning — HTTP and real ephemeral MongoD
           mode: 'subscription',
           metadata: { type: 'clinica' },
           payment_status: 'paid',
-          amount_total: PLANS.clinica.monthly * 100,
+          amount_total: (PLANS.clinica.monthly + PLANS.clinica.setup) * 100,
           currency: 'eur',
           customer: 'cus_test',
           subscription: 'sub_test',
@@ -658,7 +660,7 @@ it.skipIf(!review)(
     app.get('/__test/checkout/:id', (req, res) => {
       if (!sessions.has(req.params.id)) return res.status(404).end();
       res.send(
-        '<h1>Checkout simulado de Clínica Digital</h1><p>Entorno local: no se realiza ningún cobro.</p><form method="post" action="/__test/complete/' +
+        '<h1>Checkout simulado</h1><p>Entorno local: no se realiza ningún cobro.</p><form method="post" action="/__test/complete/' +
           req.params.id +
           '"><button>Confirmar pago simulado</button></form><p id="result" role="status"></p><script src="/__test/checkout.js" defer></script>'
       );
@@ -674,10 +676,13 @@ it.skipIf(!review)(
             object: {
               id: req.params.id,
               mode: 'subscription',
-              metadata: { type: 'clinica' },
+              metadata: params.metadata,
               payment_status: 'paid',
-              amount_total: PLANS.clinica.monthly * 100,
-              currency: 'eur',
+              amount_total: params.line_items.reduce(
+                (sum, item) => sum + item.price_data.unit_amount * item.quantity,
+                0
+              ),
+              currency: params.line_items[0].price_data.currency,
               customer: 'cus_test_' + req.params.id,
               subscription: 'sub_test_' + req.params.id,
               customer_details: { email: 'buyer@example.test', name: 'Compra simulada' },
@@ -702,6 +707,31 @@ it.skipIf(!review)(
         next(err);
       }
     });
+    const sample = await Lead.create({
+      contact_id: 'request-review-proposal',
+      platform: 'website',
+      source: 'web_form',
+      name: 'Laura Gerente',
+      company: 'Distribuciones Ejemplo',
+      email: 'laura@example.test',
+      service_interest: 'brand_management',
+      questionnaire: { sector: 'distribution', employees: '6-10', locations: '1', revenue: '150k-500k', country: 'ES', reasons: ['no_results'], channels: ['instagram', 'google'] },
+      suggested_price: { kind: 'subscription', currency: 'EUR', monthly: 890, setup: 490, notes: ['Escala microempresa'] },
+    });
+    const { proposal } = await create_proposal(sample._id, {
+      service: 'brand_management',
+      currency: 'EUR',
+      vat_rate: 21,
+      items: [
+        { label: 'Departamento de marketing', detail: 'Estrategia, marca, contenido, anuncios, web y mensajes' },
+        { label: 'Instagram y Google', detail: 'Gestión completa y atención de mensajes' },
+      ],
+      monthly: 890,
+      setup: 490,
+      message: 'Laura, aquí tienes la propuesta que hablamos. Cualquier ajuste, me escribes.',
+      valid_days: 15,
+    });
+    console.log('LOCAL_REVIEW_PROPOSAL ' + proposal.url);
     console.log(
       'LOCAL_REVIEW_READY http://127.0.0.1:3107 — admin@example.test / client@example.test — password local-review-only. Mongo ephemeral; AI, mail, Slack and checkout simulated.'
     );

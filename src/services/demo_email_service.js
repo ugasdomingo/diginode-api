@@ -8,10 +8,10 @@ import { demo_error, reserve_quota } from './demo_guard_service.js';
 
 export const summary_for = (context) =>
   context === 'agency'
-    ? 'Diginode es el departamento de marketing externo de microempresas y pymes: estrategia, marca, contenido, publicidad, web y atención en redes. Plan a medida desde 890 EUR/mes + IVA y 490 EUR de alta; pymes desde 1.890 EUR/mes y 990 EUR de alta. Inversión publicitaria y producción externa aparte. Pide tu plan en https://midiginode.com/#contacto'
+    ? 'Diginode lleva todo el marketing de microempresas y pymes con un objetivo: traerte clientes. Unimos redes, anuncios, web, tu local y el boca a boca, de acuerdo a tu filosofía y tus valores. Desde 890 EUR/mes + IVA (pymes desde 1.890 EUR), sin permanencia. Pide tu propuesta con precio en 3 minutos: https://midiginode.com/#contacto'
     : context === 'web'
-      ? 'Diginode crea páginas web para vender, desde 1.900 EUR + IVA, sin obligación de contratar marketing. Definimos alcance, fases, validación, propiedad y mantenimiento antes de contratar. Las aplicaciones a medida se presupuestan aparte. https://midiginode.com/webs-y-aplicaciones#contacto'
-      : `Clínica Digital de Diginode: web profesional y ${PLANS.clinica.employees_included} empleados IA por ${PLANS.clinica.monthly} EUR/mes. Consulta alcance y condiciones en https://midiginode.com/clinica-digital . La agenda de la demo es ficticia y no reserva citas.`;
+      ? 'Diginode diseña y construye a medida la web que tu negocio necesita para vender, sin plantillas y sin obligación de contratar marketing. Web profesional desde 1.900 EUR + IVA; tienda online desde 3.400 EUR. Pide tu propuesta con precio: https://midiginode.com/webs-y-aplicaciones#contacto'
+      : `Clínica Digital de Diginode: tu web profesional y ${PLANS.clinica.employees_included} asistentes con IA que atienden, agendan y publican por ti. ${PLANS.clinica.setup} EUR de instalación y ${PLANS.clinica.monthly} EUR/mes, IVA incluido, sin permanencia. https://midiginode.com/clinica-digital . La agenda de la demo es ficticia y no reserva citas.`;
 
 export async function prepare_demo_email(lead, recipient, context, supports_confirmation) {
   const parsed = z

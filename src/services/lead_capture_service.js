@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import Lead from '../models/lead_model.js';
 import { PRIVACY_VERSION, booking_link } from '../config/services.js';
 import { notify_ops } from './ops_notify_service.js';
+import { suggest_price } from './pricing_service.js';
 
 const conflict = () =>
   Object.assign(
@@ -61,6 +62,9 @@ export async function capture_lead(input) {
     try {
       lead = await Lead.create({
         ...content,
+        ...(content.questionnaire && {
+          suggested_price: suggest_price(content.service_interest, content.questionnaire),
+        }),
         request_hash,
         contact_id: `request-${input.request_id}`,
         platform: 'website',

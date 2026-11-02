@@ -9,6 +9,9 @@ import Payment from '../models/payment_model.js';
 import TrainingEnrollment from '../models/training_enrollment_model.js';
 import { send_welcome_email, send_suspension_email, send_training_welcome_email } from './email_service.js';
 import { notify_office_requested, notify_ops } from './ops_notify_service.js';
+import Proposal from '../models/proposal_model.js';
+import Lead from '../models/lead_model.js';
+import { amounts, proposal_url } from './proposal_service.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -113,9 +116,9 @@ const ensure_account = async ({ email, full_name, plan, send_welcome = send_welc
 
 // ── Checkout session creators ───────────────────────────────────────────────
 
-// Clínica Digital — the only public product. Flat monthly subscription, no
-// setup fee and no trial (first month is charged immediately). Uses inline
-// price_data so no pre-created Stripe Price IDs are needed.
+// Clínica Digital — monthly subscription plus a one-time installation fee in the
+// first payment, no trial. Uses inline price_data so no pre-created Stripe Price IDs
+// are needed.
 const create_clinica_checkout_session = async () => {
   const base = process.env.FRONTEND_URL;
 
@@ -132,6 +135,18 @@ const create_clinica_checkout_session = async () => {
         },
         quantity: 1,
       },
+      ...(PLANS.clinica.setup
+        ? [
+            {
+              price_data: {
+                currency:     'eur',
+                product_data: { name: `${PLANS.clinica.name} — Instalación` },
+                unit_amount:  PLANS.clinica.setup * 100,
+              },
+              quantity: 1,
+            },
+          ]
+        : []),
     ],
     success_url:       `${base}${process.env.CLINICA_RETURN_PATH === '/clinica-digital' ? '/clinica-digital' : '/'}?compra=pendiente`,
     cancel_url:        `${base}/`,
@@ -140,6 +155,46 @@ const create_clinica_checkout_session = async () => {
     subscription_data: { metadata: { plan: 'clinica' } },
   });
 
+  return { url: session.url, session_id: session.id };
+};
+
+// Accepted proposal: paying it is the acceptance. Gross amounts include VAT so the
+// client pays exactly what the proposal page shows.
+const create_proposal_checkout_session = async (proposal) => {
+  const currency = proposal.currency.toLowerCase();
+  const due = amounts(proposal);
+  const name = proposal.service === 'web_project' ? 'Página web' : 'Departamento de marketing';
+  const label = `${name} · ${proposal.company || 'Propuesta'} · v${proposal.version}`;
+  const line_items =
+    proposal.billing === 'subscription'
+      ? [
+          {
+            price_data: {
+              currency,
+              product_data: { name: `${label} (mensual)` },
+              unit_amount: due.monthly,
+              recurring: { interval: 'month' },
+            },
+            quantity: 1,
+          },
+          ...(due.setup
+            ? [{ price_data: { currency, product_data: { name: `${label} (alta)` }, unit_amount: due.setup }, quantity: 1 }]
+            : []),
+        ]
+      : [{ price_data: { currency, product_data: { name: label }, unit_amount: due.first }, quantity: 1 }];
+  const url = proposal_url(proposal);
+  const metadata = { type: 'proposal', proposal_id: String(proposal._id) };
+  const session = await stripe.checkout.sessions.create({
+    mode: proposal.billing === 'subscription' ? 'subscription' : 'payment',
+    line_items,
+    customer_email: proposal.email,
+    success_url: `${url}?pago=ok`,
+    cancel_url: url,
+    locale: 'es',
+    metadata,
+    ...(proposal.billing === 'subscription' && { subscription_data: { metadata } }),
+  });
+  await Proposal.updateOne({ _id: proposal._id }, { $set: { stripe_session_id: session.id } });
   return { url: session.url, session_id: session.id };
 };
 
@@ -256,6 +311,7 @@ const handle_checkout_completed = async (session) => {
   if (type === 'clinica')       await handle_clinica_checkout(session);
   else if (type === 'training') await handle_training_checkout(session);
   else if (type === 'manual')   await handle_manual_checkout(session);
+  else if (type === 'proposal') await handle_proposal_checkout(session);
 };
 
 // Clínica Digital subscription — creates account + office with the 3 employees.
@@ -270,9 +326,10 @@ const handle_clinica_checkout = async (session) => {
   const existing = await PackageSubscription.findOne({ stripe_checkout_session_id: session.id });
   if (existing) return;
 
-  // First invoice must equal the flat monthly fee.
-  if (amount_mismatch(session, PLANS.clinica.monthly)) {
-    return flag_amount_mismatch(session, { type: 'subscription', label: PLANS.clinica.name, expected_eur: PLANS.clinica.monthly });
+  // First invoice must equal the monthly fee plus the installation fee.
+  const first_payment = PLANS.clinica.monthly + PLANS.clinica.setup;
+  if (amount_mismatch(session, first_payment)) {
+    return flag_amount_mismatch(session, { type: 'subscription', label: PLANS.clinica.name, expected_eur: first_payment });
   }
 
   const subscription = await stripe.subscriptions.retrieve(stripe_subscription_id);
@@ -474,6 +531,43 @@ const handle_manual_checkout = async (session) => {
   });
 };
 
+// Proposal paid — accepted only if Stripe charged exactly its first payment, in its currency.
+const handle_proposal_checkout = async (session) => {
+  const proposal = await Proposal.findById(session.metadata?.proposal_id);
+  if (!proposal) return;
+  const expected = amounts(proposal).first;
+  const label = `Propuesta v${proposal.version} · ${proposal.company || proposal.email}`;
+  if (session.amount_total !== expected || (session.currency ?? '').toUpperCase() !== proposal.currency) {
+    await flag_amount_mismatch(session, { type: 'manual', label, expected_eur: expected / 100 });
+    return;
+  }
+  const paid = await Proposal.findOneAndUpdate(
+    { _id: proposal._id, status: { $ne: 'paid' } },
+    { $set: { status: 'paid', paid_at: new Date(), stripe_session_id: session.id } },
+    { new: true }
+  );
+  if (!paid) return;
+  await Proposal.updateMany(
+    { lead_id: proposal.lead_id, _id: { $ne: proposal._id }, status: 'sent' },
+    { $set: { status: 'superseded' } }
+  );
+  await Lead.updateOne({ _id: proposal.lead_id }, { $set: { status: 'won', funnel_stage: 'won' } });
+  if (!(await Payment.findOne({ stripe_session_id: session.id })))
+    await Payment.create({
+      payer_email: session.customer_details?.email ?? proposal.email,
+      payer_name: session.customer_details?.name ?? proposal.contact_name,
+      stripe_session_id: session.id,
+      stripe_payment_intent_id: session.payment_intent ?? undefined,
+      amount: expected / 100,
+      currency: proposal.currency,
+      description: label,
+      type: 'manual',
+      reference_slug: 'proposal',
+      reference_label: label,
+    });
+  await notify_ops(`💳 *Propuesta pagada:* ${label} · ${expected / 100} ${proposal.currency}`).catch(() => {});
+};
+
 // Subscription cancelled in Stripe — also covers legacy plans still active.
 const handle_subscription_deleted = async (subscription) => {
   const sub = await PackageSubscription.findOneAndUpdate(
@@ -530,6 +624,7 @@ const handle_invoice_succeeded = async (invoice) => {
 };
 
 export {
+  create_proposal_checkout_session,
   ensure_account,
   create_clinica_checkout_session,
   create_training_checkout_session,

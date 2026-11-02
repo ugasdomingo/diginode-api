@@ -12,10 +12,10 @@ describe('config/plans', () => {
     expect(Object.keys(PLANS)).toEqual(['clinica']);
   });
 
-  it('el flagship son 150€/mes sin setup y con 3 empleados', () => {
+  it('el flagship son 450€ de instalación, 150€/mes y 3 empleados', () => {
     expect(PLANS.clinica.role).toBe('flagship');
     expect(PLANS.clinica.monthly).toBe(150);
-    expect(PLANS.clinica.setup).toBe(0);
+    expect(PLANS.clinica.setup).toBe(450);
     expect(PLANS.clinica.employees_included).toBe(3);
   });
 

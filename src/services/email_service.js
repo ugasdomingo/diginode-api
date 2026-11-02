@@ -176,7 +176,19 @@ const send_nora_demo_email = async (to, { subject, body, idempotency_key }) => {
   return result.data;
 };
 
+// Proposal link. The page shows the detail; paying there accepts it.
+const send_proposal_email = async (to, { name, url, version }) => {
+  const result = await resend.emails.send({
+    from: FROM,
+    to,
+    subject: version > 1 ? 'Tu propuesta actualizada de Diginode' : 'Tu propuesta de Diginode',
+    html: `<h2>Hola ${escape_html(name || '')},</h2><p>Aquí tienes tu propuesta${version > 1 ? ' actualizada' : ''}, con el detalle y el precio:</p><p><a href="${url}">${url}</a></p><p>Si quieres ajustar algo, responde a este correo o escríbenos por WhatsApp y te enviamos una nueva versión. Cuando estés conforme, puedes aceptarla pagando desde ese mismo enlace.</p><p>Domingo Ugas · Diginode</p>`,
+  });
+  if (result?.error) throw new Error('Email provider rejected delivery');
+};
+
 export {
+  send_proposal_email,
   send_welcome_email,
   send_training_welcome_email,
   send_suspension_email,

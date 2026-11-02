@@ -3,8 +3,8 @@
 // read pricing from here. NEVER hardcode a price elsewhere.
 //
 // Modelo comercial vigente (decisión 2026-08-14): un solo producto.
-//   Clínica Digital — página web + 3 empleados IA, 150€/mes, sin setup y sin
-//   trial (cobro inmediato). Alquiler con opción a compra: al pagar la cuota 12
+//   Clínica Digital — página web + 3 empleados IA, 450€ de instalación y 150€/mes
+//   (decisión 2026-11-02), sin trial: el primer cobro incluye ambos. Alquiler con opción a compra: al pagar la cuota 12
 //   el traspaso queda concretado (el cliente es dueño de su dominio y de los
 //   datos de sus clientes desde el día 1).
 export const PLANS = {
@@ -12,7 +12,7 @@ export const PLANS = {
     slug:               'clinica',
     name:               'Clínica Digital',
     monthly:            150,
-    setup:              0,
+    setup:              450,
     employees_included: 3,
     role:               'flagship',
   },

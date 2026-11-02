@@ -13,6 +13,7 @@ import plans_routes from './routes/plans_routes.js';
 import clinica_routes from './routes/clinica_routes.js';
 import services_routes from './routes/services_routes.js';
 import lead_routes from './routes/lead_routes.js';
+import proposal_routes from './routes/proposal_routes.js';
 import demo_routes from './routes/demo_routes.js';
 import trainings_routes from './routes/trainings_routes.js';
 import analytics_routes from './routes/analytics_routes.js';
@@ -49,7 +50,7 @@ app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 app.use('/api/analytics', express.json({ type: ['application/json', 'text/plain'], limit: '4kb' }));
 
 // JSON parsing for all other routes — cap body size to blunt memory-exhaustion payloads
-app.use('/api/leads', express.json({ limit: '8kb' }));
+app.use('/api/leads', express.json({ limit: '16kb' }));
 app.use('/api/demo', express.json({ limit: '8kb' }));
 app.use(express.json({ limit: '1mb' }));
 
@@ -74,6 +75,7 @@ app.use('/api/blog', blog_routes);
 app.use('/api/plans', plans_routes);
 app.use('/api/services', services_routes);
 app.use('/api/leads', lead_routes);
+app.use('/api/proposals', proposal_routes);
 app.use('/api/clinica', clinica_routes);
 app.use('/api/demo', demo_routes);
 app.use('/api/trainings', trainings_routes);

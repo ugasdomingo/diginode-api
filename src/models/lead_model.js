@@ -21,6 +21,8 @@ const lead_schema = new mongoose.Schema(
     service_interest: { type: String, enum: ['brand_management', 'web_project', 'digital_clinic', 'undecided'] },
     requested_scale: { type: String, enum: ['micro', 'sme', 'pending'] },
     goal: String,
+    questionnaire: mongoose.Schema.Types.Mixed,
+    suggested_price: mongoose.Schema.Types.Mixed,
     budget_range: String,
     landing_path: String,
     attribution: { channel: String, campaign: String },

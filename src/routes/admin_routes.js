@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { authenticate, require_role } from '../middleware/auth_middleware.js';
 import validate_object_id from '../middleware/validate_object_id.js';
+import validate from '../middleware/validate_middleware.js';
+import Proposal from '../models/proposal_model.js';
+import { proposal_input_schema } from '../schemas/proposal_schema.js';
+import { admin_view, create_proposal } from '../services/proposal_service.js';
 import {
   get_conversations,
   get_conversation_detail,
@@ -47,6 +51,26 @@ router.delete('/trainings/enrollments/:enrollment_id', validate_object_id('enrol
 router.get('/funnel', get_funnel);
 
 router.get('/leads', get_leads);
+router.get('/leads/:lead_id/proposals', validate_object_id('lead_id'), async (req, res, next) => {
+  try {
+    const proposals = await Proposal.find({ lead_id: req.params.lead_id }).sort({ version: -1 });
+    res.json({ success: true, data: proposals.map(admin_view) });
+  } catch (err) {
+    next(err);
+  }
+});
+router.post(
+  '/leads/:lead_id/proposals',
+  validate_object_id('lead_id'),
+  validate(proposal_input_schema),
+  async (req, res, next) => {
+    try {
+      res.status(201).json({ success: true, data: await create_proposal(req.params.lead_id, req.body) });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 router.patch('/leads/:lead_id', validate_object_id('lead_id'), update_lead);
 router.post('/leads/:lead_id/convert', validate_object_id('lead_id'), convert_lead);
 router.delete('/leads/:lead_id', validate_object_id('lead_id'), delete_lead);

@@ -66,12 +66,12 @@ export function demo_actions(context = 'clinic') {
     context === 'web'
       ? '/webs-y-aplicaciones#contacto'
       : context === 'clinic'
-        ? '/clinica-digital#contacto'
+        ? '/clinica-digital#demo-nora'
         : '/#contacto';
   const actions = [
     {
       type: 'contact',
-      label: context === 'web' ? 'Pedir presupuesto' : 'Pedir mi plan a medida',
+      label: context === 'clinic' ? 'Contratar Clínica Digital' : 'Solicitar mi propuesta',
       href: contact,
     },
   ];
